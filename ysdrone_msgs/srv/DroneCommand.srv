@@ -1,0 +1,7 @@
+# Request
+int32 command
+
+---
+# Response
+bool res
+string mode
