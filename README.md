@@ -3,8 +3,7 @@
 
 ## offboard
 
-This package provides the functionality for controlling the drone in offboard mode.
-
+Offboard 모드에서 드론을 제어하기 위한 패키지.
 ### Files
 
 - [scripts](offboard/scripts): Directory containing the following scripts:
@@ -12,9 +11,14 @@ This package provides the functionality for controlling the drone in offboard mo
   - [path_node.py](offboard/scripts/path_node.py): Node for planning and following a path.
   - [setmode_node.py](offboard/scripts/setmode_node.py): Node for setting the flight mode of the drone.
 
+**TODO**
+
+- [ ] GPS 좌표계 yaml 파일을 읽어서 업데이트 해줘야 하는 경로에 추가
+- [ ] cpp 버전으로 작성
+
 ## safety_landing
 
-This package provides safety landing features for the drone.
+마지막 경로점에 도달하여 Safety Landing하기 위한 패키지. PID 방식과 RL 방식으로 구성됨.
 
 ### Files
 
@@ -22,11 +26,20 @@ This package provides safety landing features for the drone.
   - [PID_control_node.py](safety_landing/scripts/PID_control_node.py): Node for PID control of the drone during landing.
   - [vision_kalman_filter_node.py](safety_landing/scripts/vision_kalman_filter_node.py): Node for filtering vision data using Kalman filter.
 
+**TODO**
+
+- [ ] RL_landing.py 테스트 후 CMakeLists.txt에 추가하기
+
 ## ysdrone_msgs
 
-This package defines custom ROS messages and services.
 
-### Files
+**DroneCommand.srv**
+```srv
+# Request
+int32 command
 
-- [srv](ysdrone_msgs/srv): Directory containing the following service definition file:
-  - [DroneCommand.srv](ysdrone_msgs/srv/DroneCommand.srv): Custom service for sending commands to the drone.
+---
+# Response
+bool res
+string mode
+```

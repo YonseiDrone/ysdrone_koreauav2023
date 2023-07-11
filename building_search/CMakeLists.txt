@@ -15,6 +15,7 @@ find_package(catkin REQUIRED COMPONENTS
   tf2
   visualization_msgs
   pcl_ros
+  ysdrone_msgs
 )
 
 ## System dependencies are found with CMake's conventions
