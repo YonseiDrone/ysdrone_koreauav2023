@@ -30,6 +30,14 @@ Offboard 모드에서 드론을 제어하기 위한 패키지.
 
 - [ ] RL_landing.py 테스트 후 CMakeLists.txt에 추가하기
 
+## isly
+
+isly package(I Still Love You)에서 착안. 미션 수행을 마치고 다시 HomePosition으로 되돌아 오는 패키지.
+
+### Files
+- [scripts](isly/scripts): Directory containing the following scripts:
+  - [isly_path_node.py](isly/scripts/isly_path_node.py) : Node for planning and following a path while coming back home.
+
 ## ysdrone_msgs
 
 
