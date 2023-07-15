@@ -35,10 +35,11 @@ public:
 	BuildingSearch(const ros::NodeHandle& n_private);
 	void turn_to_target_yaw(double x, double y, double z);
 
-	float last_goal_x;
-	float last_goal_y;
-	float last_goal_z;
+	double last_goal_x;
+	double last_goal_y;
+	double last_goal_z;
 	bool is_search_done, is_cargo_launched;
+	double marker_mission_num;
 
 private:
 /// utils
@@ -49,6 +50,7 @@ private:
 	void pose_cb(const geometry_msgs::PoseStamped::ConstPtr& msg);
 	void cloud_cb(const sensor_msgs::PointCloud2ConstPtr& input);
 	void cargo_bool_cb(const std_msgs::Bool::ConstPtr &msg);
+	bool call_drone_command(const double& data);
 /// ROS params
 	ros::NodeHandle nh_;
 	ros::Rate rate;

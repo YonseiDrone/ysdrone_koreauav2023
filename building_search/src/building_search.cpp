@@ -3,7 +3,7 @@
 BuildingSearch::BuildingSearch(const ros::NodeHandle& n_private) : nh_(n_private), rate(30)
 {
     // ROS params
-    nh_.param("/marker_mission_num", marker_mission_num, 3);
+    nh_.param("/marker_mission_num", marker_mission_num, 3.0);
     //TODO: 처음 넣어주는 GPS 마지막 좌표로 설정되어야 함.
     nh_.param("/last_goal_x", last_goal_x, 0.0);
     nh_.param("/last_goal_y", last_goal_y, 135.0);
@@ -200,7 +200,7 @@ void BuildingSearch::turn_to_target_yaw(double x, double y, double z)
     }
 }
 
-bool BuildingSearch::call_drone_command(const std::string& data) {
+bool BuildingSearch::call_drone_command(const double& data) {
     client = nh_.serviceClient<ysdrone_msgs::DroneCommand>("/drone_command");
     ysdrone_msgs::DroneCommand srv;
 
