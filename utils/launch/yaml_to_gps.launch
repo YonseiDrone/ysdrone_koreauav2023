@@ -1,0 +1,4 @@
+<launch>
+  <rosparam command="load" file="$(find koreauav_utils)/config/gps_coordinates.yaml" />
+  <node pkg="koreauav_utils" type="yaml_to_gps" name="yaml_to_gps" output="screen" />
+</launch>
