@@ -27,6 +27,8 @@
 
 #include <math.h>
 
+#include "ysdrone_msgs/DroneCommand.h" 
+
 class BuildingSearch
 {
 public:
@@ -52,6 +54,7 @@ private:
 	ros::Rate rate;
 	ros::Publisher goal_pos_pub, pub_markers, goal_yaw_pub;
 	ros::Subscriber cloud_sub, state_sub, cargo_bool_sub;
+	ros::ServiceClient client;
 	geometry_msgs::PoseStamped current_pose;
 	visualization_msgs::MarkerArray marker_array;
 	geometry_msgs::PoseStamped current_target_position;

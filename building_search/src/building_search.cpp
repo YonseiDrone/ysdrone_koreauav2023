@@ -2,6 +2,14 @@
 
 BuildingSearch::BuildingSearch(const ros::NodeHandle& n_private) : nh_(n_private), rate(30)
 {
+    // ROS params
+    nh_.param("/marker_mission_num", marker_mission_num, 3);
+    //TODO: 처음 넣어주는 GPS 마지막 좌표로 설정되어야 함.
+    nh_.param("/last_goal_x", last_goal_x, 0.0);
+    nh_.param("/last_goal_y", last_goal_y, 135.0);
+    nh_.param("/last_goal_z", last_goal_z, 0.0);
+
+    // ROS Publisher & Subscriber
 	cloud_sub = nh_.subscribe<sensor_msgs::PointCloud2>("/local_pointcloud", 1, boost::bind(&BuildingSearch::cloud_cb, this, _1));
 	state_sub = nh_.subscribe<geometry_msgs::PoseStamped>("/mavros/local_position/pose", 10, boost::bind(&BuildingSearch::pose_cb, this, _1));
 	cargo_bool_sub = nh_.subscribe<std_msgs::Bool>("/cargo_mission", 1, boost::bind(&BuildingSearch::cargo_bool_cb, this, _1));
@@ -9,15 +17,18 @@ BuildingSearch::BuildingSearch(const ros::NodeHandle& n_private) : nh_(n_private
 	pub_markers = nh_.advertise<visualization_msgs::MarkerArray>("cluster_markers", 1);
 	goal_yaw_pub = nh_.advertise<geometry_msgs::PoseStamped>("/mavros/setpoint_position/local", 10);
 
+    // ROS msgs
 	current_target_position = geometry_msgs::PoseStamped();
 	current_pose = geometry_msgs::PoseStamped();
-	last_goal_x = 0.0;
-	last_goal_y = 135.0;
-	last_goal_z = 10.0;
+	
+	is_search_done = false;
 
-	// If object is detected, publish the estimated yaw to the clustered object
-	if (is_search_done)        
-		turn_to_target_yaw(goal_pos.pose.position.x, goal_pos.pose.position.y, goal_pos.pose.position.z);
+    while (ros::ok())
+    {
+        // If object is detected, publish the estimated yaw to the clustered object
+        if (is_search_done)        
+            turn_to_target_yaw(goal_pos.pose.position.x, goal_pos.pose.position.y, goal_pos.pose.position.z);
+    }
 }
 
 /// utils
@@ -150,17 +161,6 @@ void BuildingSearch::cloud_cb(const sensor_msgs::PointCloud2ConstPtr& input)
     }
 }
 
-void BuildingSearch::cargo_bool_cb(const std_msgs::Bool::ConstPtr& msg)
-{
-	is_cargo_launched = msg->data;
-	if(is_cargo_launched)
-	{
-		for(int i = 0; i< 5; ++i)
-		{
-			ROS_INFO("Cargo Launched!");
-		}
-	}
-}
 // Turn the heading angle of the quadrotor to the target
 // Since the local planner(PX4 Avoidance) shows the unexpected heading angle in the last goal position,
 // Publish the orientation which is calculated by relative vector between last goal position and the clustered object.
@@ -194,6 +194,36 @@ void BuildingSearch::turn_to_target_yaw(double x, double y, double z)
 			{
 					printf("Target yaw reached!\n");
 					ROS_INFO("HOLDING");
+                    // Move on to the next mission
+                    call_drone_command(marker_mission_num);
 			}
     }
 }
+
+bool BuildingSearch::call_drone_command(const std::string& data) {
+    client = nh_.serviceClient<ysdrone_msgs::DroneCommand>("/drone_command");
+    ysdrone_msgs::DroneCommand srv;
+
+    srv.request.command = data;
+
+    if (client.call(srv)) {
+        return true;    // The service call was successful
+    } else {
+        ROS_ERROR("Failed to call service drone_command");
+        return false;   // The service call failed
+    }
+}
+
+
+void BuildingSearch::cargo_bool_cb(const std_msgs::Bool::ConstPtr& msg)
+{
+	is_cargo_launched = msg->data;
+	if(is_cargo_launched)
+	{
+		for(int i = 0; i< 5; ++i)
+		{
+			ROS_INFO("Cargo Launched!");
+		}
+	}
+}
+

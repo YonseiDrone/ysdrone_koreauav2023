@@ -134,7 +134,7 @@ class ControlClass(object):
         self.isly_destination_command_marker.pose.position.x = msg.pose.position.x
         self.isly_destination_command_marker.pose.position.y = msg.pose.position.y
         self.isly_destination_command_marker.pose.position.z = msg.pose.position.z
-        self.isly_destination_command_marker_array.clear()
+        self.isly_destination_command_marker_array.markers.clear()
         self.isly_destination_command_marker_array.markers.append(self.isly_destination_command_marker)
     
     def cmdreact_cb(self, req):
@@ -195,7 +195,6 @@ if __name__ == "__main__":
     rospy.Timer(rospy.Duration(0.05), control_node_handler.main_controller)
 
     rospy.spin()
-
 
 
 

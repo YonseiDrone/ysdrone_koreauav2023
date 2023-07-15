@@ -5,6 +5,7 @@ import math
 
 from geometry_msgs.msg import PoseStamped
 from mavros_msgs.msg import State
+from ysdrone_msgs.srv import *
 
 class PathClass(object):
     def __init__(self):
@@ -47,9 +48,9 @@ class PathClass(object):
             self.destination_cmd.header.stamp = self.time_now
 
             self.destination_positions = [
-                (0.0, 0.0, 15.0),
-                (100.0, 5.0, 4.0),
-                (10.0, 8.0, 4.0)
+                (0.0, 8.0, 4.0),
+                (8.0, 8.0, 4.0),
+                (0.0, 0.0, 4.0)
             ]
 
             self.destination_cmd.pose.position.x, self.destination_cmd.pose.position.y, self.destination_cmd.pose.position.z = self.destination_positions[self.destination_cnt]
@@ -61,6 +62,20 @@ class PathClass(object):
                     self.destination_cnt = 0
             
             self.destination_cmd_pub.publish(self.destination_cmd)
+
+            if self.destination_cnt == 3:
+                reponse = self.call_drone_command(4)
+
+    def call_drone_command(self, data):
+            rospy.wait_for_service('/drone_command')
+            try:
+                service = rospy.ServiceProxy('/drone_command', DroneCommand)
+                request = DroneCommandRequest()
+                request.command = data
+                response = service(request)
+                return response
+            except rospy.ServiceException as e:
+                print(f"Service call failed: {e}")
 
 if __name__ == "__main__":
     rospy.init_node('path_node', anonymous=True)
@@ -84,6 +99,5 @@ if __name__ == "__main__":
 
 
     
-
 
 
