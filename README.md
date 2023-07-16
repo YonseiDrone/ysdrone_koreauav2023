@@ -20,9 +20,13 @@ Offboard 모드에서 드론을 제어하기 위한 패키지.
 
 ### Files
 
-- [src]
+- [src](building_search/src/)
   - [building_control.cpp](building_search/src/building_search.cpp): BuildingSearch Class implementation. Check out dtailed description in [README](building_search/README.md)
   - [building_control_node.cpp](building_search/src/building_search_node.cpp): executable node which named building_search_node.
+
+**TODO**
+- [ ] 실제에서 테스트 및 주변 오브젝트 처리
+- [ ] 카메라 FOV가 안나오는 경우 디버깅(정밀도 향상)
 
 ## safety_landing
 
