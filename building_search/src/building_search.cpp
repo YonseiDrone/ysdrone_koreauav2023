@@ -1,33 +1,69 @@
 #include "building_search.hpp"
 
+
 BuildingSearch::BuildingSearch(const ros::NodeHandle& n_private) : nh_(n_private), rate(30)
 {
     // ROS params
-    nh_.param("/marker_mission_num", marker_mission_num, 3.0);
+    nh_.param("/bulding_search_mission", building_search_mission, 2.0);
+    nh_.param("/marker_mission", marker_mission, 3.0);
     //TODO: 처음 넣어주는 GPS 마지막 좌표로 설정되어야 함.
     nh_.param("/last_goal_x", last_goal_x, 0.0);
     nh_.param("/last_goal_y", last_goal_y, 135.0);
-    nh_.param("/last_goal_z", last_goal_z, 0.0);
+    nh_.param("/last_goal_z", last_goal_z, 15.0);
 
     // ROS Publisher & Subscriber
 	cloud_sub = nh_.subscribe<sensor_msgs::PointCloud2>("/local_pointcloud", 1, boost::bind(&BuildingSearch::cloud_cb, this, _1));
-	state_sub = nh_.subscribe<geometry_msgs::PoseStamped>("/mavros/local_position/pose", 10, boost::bind(&BuildingSearch::pose_cb, this, _1));
-	cargo_bool_sub = nh_.subscribe<std_msgs::Bool>("/cargo_mission", 1, boost::bind(&BuildingSearch::cargo_bool_cb, this, _1));
-	goal_pos_pub = nh_.advertise<visualization_msgs::MarkerArray>("input/goal_position", 1);
-	pub_markers = nh_.advertise<visualization_msgs::MarkerArray>("cluster_markers", 1);
+	pos_sub = nh_.subscribe<geometry_msgs::PoseStamped>("/mavros/local_position/pose", 10, boost::bind(&BuildingSearch::pose_cb, this, _1));
+
+	goal_pos_pub = nh_.advertise<visualization_msgs::MarkerArray>("/input/goal_position", 1);
 	goal_yaw_pub = nh_.advertise<geometry_msgs::PoseStamped>("/mavros/setpoint_position/local", 10);
+    // ROS service for DroneCommand
+    client = nh_.serviceClient<ysdrone_msgs::DroneCommand>("drone_command");
+    server = nh_.advertiseService("drone_command", &BuildingSearch::srv_cb, this);
 
     // ROS msgs
 	current_target_position = geometry_msgs::PoseStamped();
 	current_pose = geometry_msgs::PoseStamped();
 	
-	is_search_done = false;
+    searching_status = 0;
+}
 
-    while (ros::ok())
+void BuildingSearch::command(const ros::TimerEvent& event)
+{
+    if(mission == building_search_mission)
     {
+        if(searching_status == 0)
+        {
+            ROS_INFO("# marker: %ld", marker_array.markers.size());
+            if(marker_array.markers.size() > 0)
+            {  
+                ROS_INFO("Turn to Target yaw");
+                turn_to_target_yaw(marker_array.markers[0].pose.position.x, marker_array.markers[0].pose.position.y, marker_array.markers[0].pose.position.z);
+            }
+        }
+        else if(searching_status == 1)
+        {
+            ROS_INFO("searching status: 1");
+            ROS_INFO("# marker: %ld", marker_array.markers.size());
+            ROS_INFO("Goal x: %f, y: %f, z: %f", marker_array.markers[0].pose.position.x, marker_array.markers[0].pose.position.y, marker_array.markers[0].pose.position.z);
+            goal_pos_pub.publish(marker_array);
+            if ((distance(marker_array.markers[0], current_pose) < 3.0) && (distance(marker_array.markers[0], current_pose) > 0.5))
+                ROS_INFO("Distance     : %.4f\n", distance(marker_array.markers[0], current_pose));
+            else if(distance(marker_array.markers[0], current_pose) < 0.5)
+            {
+                ROS_INFO("Goal %f %f %f reached!\n", marker_array.markers[0].pose.position.x, marker_array.markers[0].pose.position.y, marker_array.markers[0].pose.position.z);
+                ros::spinOnce();
+                searching_status += 1;
+            }
+        }
         // If object is detected, publish the estimated yaw to the clustered object
-        if (is_search_done)        
-            turn_to_target_yaw(goal_pos.pose.position.x, goal_pos.pose.position.y, goal_pos.pose.position.z);
+        else if (searching_status == 2)
+        {   
+            ROS_INFO("searching status: 2");
+            ROS_INFO("Goal x: %f, y: %f, z: %f", marker_array.markers[0].pose.position.x, marker_array.markers[0].pose.position.y, marker_array.markers[0].pose.position.z);
+            move_to_target(marker_array.markers[0].pose.position.x, marker_array.markers[0].pose.position.y, marker_array.markers[0].pose.position.z);
+            ROS_INFO("[Building Search] Done");
+        }
     }
 }
 
@@ -53,14 +89,17 @@ double BuildingSearch::orientationGap(const geometry_msgs::PoseStamped& p1, cons
     // Get the current orientation and target orientation as tf::Quaternion
     tf::Quaternion current_orientation;
     tf::quaternionMsgToTF(p1.pose.orientation, current_orientation);
+    double current_roll, current_pitch, current_yaw;
+    tf::Matrix3x3(current_orientation).getRPY(current_roll, current_pitch, current_yaw);
 
     tf::Quaternion target_orientation;
     tf::quaternionMsgToTF(p2.pose.orientation, target_orientation);
+    double target_roll, target_pitch, target_yaw;
+    tf::Matrix3x3(target_orientation).getRPY(target_roll, target_pitch, target_yaw);
 
     // Calculate the angle difference between the two orientations
-    double angle_diff = current_orientation.angle(target_orientation);
-    double angle_diff_deg = angle_diff * 180.0 / M_PI;
-    return angle_diff_deg;
+    double yaw_diff = abs(current_yaw - target_yaw);
+    return yaw_diff;
 }
 
 // ROS callback functions
@@ -73,7 +112,7 @@ void BuildingSearch::cloud_cb(const sensor_msgs::PointCloud2ConstPtr& input)
 {
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>);
     pcl::fromROSMsg(*input, *cloud);
-    ROS_INFO_STREAM(" Cloud inputs: #" << cloud->size() << " Points");
+    // ROS_INFO_STREAM(" Cloud inputs: #" << cloud->size() << " Points");
 
     if(cloud->size() > 0)
     {
@@ -89,7 +128,7 @@ void BuildingSearch::cloud_cb(const sensor_msgs::PointCloud2ConstPtr& input)
         ec.setInputCloud(cloud);
         ec.extract(cluster_indices);
 
-        ROS_INFO_STREAM(" # of Clusters: " << cluster_indices.size());
+        // ROS_INFO_STREAM(" # of Clusters: " << cluster_indices.size());
 
         for(std::vector<pcl::PointIndices>::const_iterator it = cluster_indices.begin(); it != cluster_indices.end(); ++it)
         {
@@ -100,11 +139,11 @@ void BuildingSearch::cloud_cb(const sensor_msgs::PointCloud2ConstPtr& input)
             cloud_cluster->height = 1;
             cloud_cluster->is_dense = true;
 
-            ROS_INFO_STREAM("Cluster " << (it - cluster_indices.begin()) << ": " << cloud_cluster->points.size() << " points");
+            // ROS_INFO_STREAM("Cluster " << (it - cluster_indices.begin()) << ": " << cloud_cluster->points.size() << " points");
 
             Eigen::Vector4f centroid;
             pcl::compute3DCentroid(*cloud_cluster, centroid);
-            printf("centroid: %f %f %f\n", centroid[0], centroid[1], centroid[2]);
+            // printf("centroid: %f %f %f\n", centroid[0], centroid[1], centroid[2]);
 
             // Calculate the dimensions of the bounding box
             pcl::PointXYZ min_pt, max_pt;
@@ -120,7 +159,7 @@ void BuildingSearch::cloud_cb(const sensor_msgs::PointCloud2ConstPtr& input)
             /* Make goal_pos to the center of the centroid of clustered object and last goal position */
             goal_pos.pose.position.x = (centroid[0] + last_goal_x) / 2;
             goal_pos.pose.position.y = (centroid[1] + last_goal_y) / 2;
-            goal_pos.pose.position.z = (centroid[2] + last_goal_z) / 2;
+            goal_pos.pose.position.z = centroid[2];
             goal_pos.scale.x = max_pt.x - min_pt.x;
             goal_pos.scale.y = max_pt.y - min_pt.y;
             goal_pos.scale.z = max_pt.z - min_pt.z;
@@ -128,31 +167,10 @@ void BuildingSearch::cloud_cb(const sensor_msgs::PointCloud2ConstPtr& input)
             goal_pos.color.g = 0.0;
             goal_pos.color.b = 0.0;
             goal_pos.color.a = 1.0;
-            goal_pos.lifetime = ros::Duration();            
+            goal_pos.lifetime = ros::Duration(0.2);            
 
+            marker_array.markers.clear();
             marker_array.markers.push_back(goal_pos);
-        
-            // Create a Marker message for this cluster
-            visualization_msgs::Marker marker;
-            marker = goal_pos;
-            marker.header.frame_id = "/local_origin";  // Replace with your frame_id
-            marker.ns = "clusters";
-
-            // Append the Marker to the MarkerArray
-            marker_array.markers.push_back(marker);
-        }
-        if (ros::ok() && distance(goal_pos, current_pose) > 0.5)
-        {
-            goal_pos_pub.publish(marker_array);
-            pub_markers.publish(marker_array);
-            if (distance(goal_pos, current_pose) < 5.0)
-				printf("Distance     : %.4f\n", distance(goal_pos, current_pose));
-        }
-        else if((distance(goal_pos, current_pose) < 0.5) && !is_search_done)
-        {
-            is_search_done = true;
-            printf("Goal reached to (Centroid + LastGoal)/2\n");
-            printf("Goal %f %f %f reached!\n", goal_pos.pose.position.x, goal_pos.pose.position.y, goal_pos.pose.position.z);
         }
     }
     else
@@ -161,19 +179,15 @@ void BuildingSearch::cloud_cb(const sensor_msgs::PointCloud2ConstPtr& input)
     }
 }
 
-// Turn the heading angle of the quadrotor to the target
-// Since the local planner(PX4 Avoidance) shows the unexpected heading angle in the last goal position,
-// Publish the orientation which is calculated by relative vector between last goal position and the clustered object.
+// Stay in last goal position but turn yaw to target
 void BuildingSearch::turn_to_target_yaw(double x, double y, double z)
 {
 	// Flight in Position Mode
-	current_target_position.pose.position.x = x;
-	current_target_position.pose.position.y = y;
+	current_target_position.pose.position.x = current_pose.pose.position.x;
+	current_target_position.pose.position.y = current_pose.pose.position.y;
 	current_target_position.pose.position.z = z;
 
-	double target_yaw = atan2(
-    current_target_position.pose.position.y - last_goal_y,
-    current_target_position.pose.position.x - last_goal_x);
+	double target_yaw = atan2(y - current_pose.pose.position.x, x - current_pose.pose.position.y);
 
 	// http://wiki.ros.org/tf2/Tutorials/Quaternions
 	tf2::Quaternion q;
@@ -184,26 +198,53 @@ void BuildingSearch::turn_to_target_yaw(double x, double y, double z)
 
 	current_target_position.pose.orientation = q_msg;
 
-    while(ros::ok() && !is_cargo_launched)
+    //TODO: 마지막 골 지점으로 Local Planner가 계속 이동하려고 하므로, 미션을 마칠 때까지 계속 publish해주어야 함.
+    while ((distance(current_target_position, current_pose) > 0.5) && (orientationGap(current_target_position, current_pose) > 5.0))
     {
-		//TODO: 마지막 골 지점으로 Local Planner가 계속 이동하려고 하므로, 미션을 마칠 때까지 계속 publish해주어야 함.
-			goal_yaw_pub.publish(current_target_position);
-			if (orientationGap(current_target_position, current_pose) > 5.0)
-					printf("Orientation gap     : %.4f\n", orientationGap(current_target_position, current_pose));
-			else
-			{
-					printf("Target yaw reached!\n");
-					ROS_INFO("HOLDING");
-                    // Move on to the next mission
-                    call_drone_command(marker_mission_num);
-			}
+        goal_yaw_pub.publish(current_target_position);
+        ROS_INFO("Distance: %.4f    Orientation gap: %.4f\n", distance(current_target_position, current_pose), orientationGap(current_target_position, current_pose));
+        ros::spinOnce();
+        rate.sleep();
     }
+    ROS_INFO("Target yaw reached!\n");
+    searching_status += 1;
+}
+
+/* Turn the heading angle of the quadrotor to the target
+* Since the local planner(PX4 Avoidance) shows the unexpected heading angle in the last goal position,
+* Publish the orientation which is calculated by relative vector between last goal position and the clustered object.
+*/
+
+void BuildingSearch::move_to_target(double x, double y, double z)
+{
+	// Flight in Position Mode
+	current_target_position.pose.position.x = x;
+	current_target_position.pose.position.y = y;
+	current_target_position.pose.position.z = z;
+
+	double target_yaw = atan2(
+    current_target_position.pose.position.y - current_pose.pose.position.y,
+    current_target_position.pose.position.x - current_pose.pose.position.x);
+
+	// http://wiki.ros.org/tf2/Tutorials/Quaternions
+	tf2::Quaternion q;
+	q.setRPY(0.0, 0.0, target_yaw);
+
+	geometry_msgs::Quaternion q_msg;
+	tf2::convert(q, q_msg);
+
+	current_target_position.pose.orientation = q_msg;
+
+    while((distance(current_target_position, current_pose) > 0.5) && (orientationGap(current_target_position, current_pose)) > 0.5)
+    {
+        goal_yaw_pub.publish(current_target_position);
+        if (orientationGap(current_target_position, current_pose) > 5.0)
+            ROS_INFO("Orientation gap: %.4f\n", orientationGap(current_target_position, current_pose));
+    }
+    ROS_INFO("Move to target Done!");
 }
 
 bool BuildingSearch::call_drone_command(const double& data) {
-    client = nh_.serviceClient<ysdrone_msgs::DroneCommand>("/drone_command");
-    ysdrone_msgs::DroneCommand srv;
-
     srv.request.command = data;
 
     if (client.call(srv)) {
@@ -214,16 +255,11 @@ bool BuildingSearch::call_drone_command(const double& data) {
     }
 }
 
-
-void BuildingSearch::cargo_bool_cb(const std_msgs::Bool::ConstPtr& msg)
+bool BuildingSearch::srv_cb(ysdrone_msgs::DroneCommand::Request &req, ysdrone_msgs::DroneCommand::Response &res)
 {
-	is_cargo_launched = msg->data;
-	if(is_cargo_launched)
-	{
-		for(int i = 0; i< 5; ++i)
-		{
-			ROS_INFO("Cargo Launched!");
-		}
-	}
+    // DroneCommand command
+    mission = req.command;
+    ROS_INFO("[Building Search] Mission set to %d", mission);
+    return true;
 }
 

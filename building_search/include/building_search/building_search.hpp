@@ -34,14 +34,8 @@ class BuildingSearch
 public:
 	BuildingSearch(const ros::NodeHandle& n_private);
 	void turn_to_target_yaw(double x, double y, double z);
-
-	double last_goal_x;
-	double last_goal_y;
-	double last_goal_z;
-	bool is_search_done, is_cargo_launched;
-	double marker_mission_num;
-
-private:
+	void move_to_target(double x, double y, double z);
+	void command(const ros::TimerEvent& event);
 /// utils
 	double distance(const geometry_msgs::PoseStamped& p1, const geometry_msgs::PoseStamped& p2);
 	double distance(const visualization_msgs::Marker& p1, const geometry_msgs::PoseStamped& p2);
@@ -49,18 +43,33 @@ private:
 /// ROS callbacks
 	void pose_cb(const geometry_msgs::PoseStamped::ConstPtr& msg);
 	void cloud_cb(const sensor_msgs::PointCloud2ConstPtr& input);
-	void cargo_bool_cb(const std_msgs::Bool::ConstPtr &msg);
+	bool srv_cb(ysdrone_msgs::DroneCommand::Request &req, ysdrone_msgs::DroneCommand::Response &res);
 	bool call_drone_command(const double& data);
-/// ROS params
+
+private:
+// paramters
+	double last_goal_x;
+	double last_goal_y;
+	double last_goal_z;
+	double building_search_mission, marker_mission;
+
+/// ROS
+// publisher & subscriber
 	ros::NodeHandle nh_;
 	ros::Rate rate;
-	ros::Publisher goal_pos_pub, pub_markers, goal_yaw_pub;
-	ros::Subscriber cloud_sub, state_sub, cargo_bool_sub;
+	ros::Publisher goal_pos_pub, goal_yaw_pub;
+	ros::Subscriber cloud_sub, pos_sub;
+// services
 	ros::ServiceClient client;
+	ros::ServiceServer server;
+// msgs
 	geometry_msgs::PoseStamped current_pose;
 	visualization_msgs::MarkerArray marker_array;
 	geometry_msgs::PoseStamped current_target_position;
 	visualization_msgs::Marker goal_pos;
+	ysdrone_msgs::DroneCommand srv;
+	int mission;
+	int searching_status;
 
 
 

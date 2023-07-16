@@ -2,12 +2,12 @@
 <package format="2">
   <name>koreauav_utils</name>
   <version>0.0.0</version>
-  <description>The utils package</description>
+  <description>2023 koreauav utils</description>
 
   <!-- One maintainer tag required, multiple allowed, one person per tag -->
   <!-- Example:  -->
   <!-- <maintainer email="jane.doe@example.com">Jane Doe</maintainer> -->
-  <maintainer email="as06047@todo.todo">as06047</maintainer>
+  <maintainer email="as06047@yonsei.ac.kr">ChanJoon</maintainer>
 
 
   <!-- One license tag required, multiple allowed, one license per tag -->
