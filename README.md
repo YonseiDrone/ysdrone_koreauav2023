@@ -16,6 +16,14 @@ Offboard 모드에서 드론을 제어하기 위한 패키지.
 - [x] GPS 좌표계 yaml 파일을 읽어서 업데이트 해줘야 하는 경로에 추가
 - [ ] cpp 버전으로 작성
 
+## Building Search
+
+### Files
+
+- [src]
+  - [building_control.cpp](building_search/src/building_search.cpp): BuildingSearch Class implementation. Check out dtailed description in [README](building_search/README.md)
+  - [building_control_node.cpp](building_search/src/building_search_node.cpp): executable node which named building_search_node.
+
 ## safety_landing
 
 마지막 경로점에 도달하여 Safety Landing하기 위한 패키지. PID 방식과 RL 방식으로 구성됨.
