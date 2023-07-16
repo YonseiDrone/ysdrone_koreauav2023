@@ -10,10 +10,49 @@ import glob
 import numpy as np
 import cv2.aruco as aruco
 from std_msgs.msg import String
-from sensor_msgs.msg import Image
+from sensor_msgs.msg import Image, Imu
 from std_msgs.msg import Float32MultiArray
 from cv_bridge import CvBridge, CvBridgeError
 from mavros_msgs.msg import State
+from geometry_msgs.msg import PoseStamped
+import math
+
+
+def to_quaternion(yaw, pitch, roll):
+    cy = math.cos(yaw * 0.5)
+    sy = math.sin(yaw * 0.5)
+    cp = math.cos(pitch * 0.5)
+    sp = math.sin(pitch * 0.5)
+    cr = math.cos(roll * 0.5)
+    sr = math.sin(roll * 0.5)
+
+    qx = sr*cp*cy - cr*sp*sy
+    qy = cr*sp*cy + sr*cp*sy
+    qz = cr*cp*sy - sr*sp*cy
+    qw = cr*cp*cy + sr*sp*sy
+
+    return qx, qy, qz, qw
+
+def to_euler_angles(x, y, z, w):
+    # roll(x-axis rotation)
+    sinr_cosp = 2 * (w*x + y*z)
+    cosr_cosp = 1 - 2*(x*x + y*y)
+    angles_roll = math.atan2(sinr_cosp, cosr_cosp)
+
+    # pitch(y-axis rotation)
+    sinp = 2*(w*y - z*x)
+    if abs(sinp) >= 1:
+        angles_pitch = math.copysign(math.pi/2, sinp) # use 90 degrees if out of range
+    else:
+        angles_pitch = math.asin(sinp)
+    
+    # yaw(z-axis rotation)
+    siny_cosp = 2*(w*z + x*y)
+    cosy_cosp = 1 - 2*(y*y + z*z)
+    angles_yaw = math.atan2(siny_cosp, cosy_cosp)
+
+    return angles_roll, angles_pitch, angles_yaw
+
 
 class KalmanFilter(object):
     def __init__(self, dt, u_x, u_y, u_z, std_acc, x_std_meas, y_std_meas, z_std_meas):
@@ -93,24 +132,23 @@ class ImageToDistance:
     def __init__(self):
         self.lostnumber = 0
         self.current_state = State()
+        self.current_pose = PoseStamped()
         self.bridge = CvBridge()
+        self.imu_data = Imu()
         # Create KalmanFilter object as KF
-        # KalmanFilter(dt, u_x, u_y, u_z, std_acc, x_std_meas, y_std_meas, z_std_meas)
         self.KF = KalmanFilter(0.1, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001)
 
         #Publisher
         self.image_pub = rospy.Publisher("/cv_image", Image, queue_size= 1)
         self.distance_pub = rospy.Publisher("/relative_distance", Float32MultiArray, queue_size=1)
 
-        #========================================================================================================
-        #Subscriber
-        # 나중에 하방 카메라 토픽에 맞춰서 변경하자!!!!!!!
-        #self.image_sub = rospy.Subscriber("/usb_camera/image_raw", Image, self.image_to_distance_cb)
         self.state_sub = rospy.Subscriber("/mavros/state", State, self.state_cb)
+        self.pose_sub = rospy.Subscriber("/mavros/local_position/pose", PoseStamped, self.pose_cb)
+        self.imu_sub = rospy.Subscriber("/mavros/imu/data", Imu, self.imu_cb)
         # cameraMatrix and distortion coefficents
         # Camera intrinsic matrix [[f_x, 0, c_x], [0, f_y, c_y], [0, 0, 1]]
-        self.mtx = np.array([[238.3515418007097, 0. , 200.5], [ 0.0 , 238.3515418007097, 200.5], [0.0 , 0.0 , 1.0]])
-        self.dist = np.array([[0, 0, 0, 0, 0]])
+        self.cameraMatrix = np.array([[1347.578105, 0. , 640.0], [ 0.0 , 1347.578105, 360.0], [0.0 , 0.0 , 1.0]])
+        self.distortion = np.array([[-0.042381, 0.122926, -0.003833, -0.017073]])
         
         # aruco basic setting
         self.aruco_dict = aruco.getPredefinedDictionary(aruco.DICT_6X6_50)
@@ -124,10 +162,17 @@ class ImageToDistance:
     def state_cb(self, msg):
         self.current_state = msg
     
+    def pose_cb(self, msg):
+        self.current_pose = msg
+    def imu_cb(self, msg):
+        self.imu_data = msg 
     def image_to_distance_cb(self, data):
        
         ret, cv_image = self.cap.read()
         height, width, _ = cv_image.shape
+
+        marker_size = 0.11
+        objp = np.array([[0, 0, 0], [0, marker_size, 0], [marker_size, marker_size, 0], [marker_size, 0, 0]], dtype=np.float32)
 
         # hese parameters include things like marker detection thresholds, corner refinement methods, and adaptive thresholding parameters
         # we should change these parameters so that can achieve the desired level of marker detection accuracy and robustness
@@ -137,7 +182,6 @@ class ImageToDistance:
         cv_image_gray = cv2.cvtColor(cv_image, cv2.COLOR_BGR2GRAY)
 
         # detect marker configuration
-        #corners, ids, rejectedImgPoints = aruco.detectMarkers(cv_image_gray, aruco_dict, parameters=parameters)
         corners, ids, rejectedImgPoints = self.detector.detectMarkers(cv_image_gray)
 
         if np.all(ids != None):
@@ -148,80 +192,16 @@ class ImageToDistance:
                 if ids[i][0] > id:
                     id = ids[i][0]
                     lock_number = i
-        #========================================================================================================
-        # Marker_size에 맞게 나중에 조절!!
-            marker_size = 1
 
-            # if id==1:
-            #     marker_size = 0.139
-            # elif id==0:
-            #     marker_size = 1
-            # elif id==2:
-            #     marker_size = 0.071
-            # elif id==3:
-            #     marker_size = 0.0325
-            # elif id==4:
-            #     marker_size = 0.016
-        #========================================================================================================
+            corners2 = corners[0][0]
 
-            ## pose estimation
-            ## mtx: cameraMatrix, dist: distortion coefficients
-            #rvec, tvec, _ = aruco.estimatePoseSingleMarkers(corners[lock_number], marker_size, self.mtx, self.dist)
-            
-
-            ## read corners information
-            #top_left_X = corners[0][0][0][0]
-            #top_left_Y = corners[0][0][0][1]
-
-            #top_right_X = corners[0][0][1][0]
-            #top_right_Y = corners[0][0][1][1]
-
-            #bottom_left_X = corners[0][0][2][0]
-            #bottom_left_Y = corners[0][0][2][1]
-
-            #bottom_right_X = corners[0][0][3][0]
-            #bottom_right_Y = corners[0][0][3][1]
-
-            ## Predict
-            #(x, y) = self.KF.predict()
-            ## cv2.rectangle(cv_image, (int(x - 15), int(y - 15)), (int(x + 15), int(y + 15)), (255, 0, 0), 2)
-            ## cv2.putText(cv_image, "Predicted Position", (int(x+15), int(y)), 0, 0.5, (255,0,0),2)
-
-            ## get pose information
-            #cor_x = tvec[0][0][0]
-            #cor_y = tvec[0][0][1]
-
-            #cor_xy = np.array([[cor_x], [cor_y]])
-            #print(cor_xy)
-            
-
-            #print("Before x=", cor_x)
-            #print("Before y=", cor_y)
-
-            ## Update
-            #(x1, y1) = self.KF.update(cor_xy)
-            ## cv2.rectangle(cv_image, (int(x1-15), int(y1-15)), (int(x1+15), int(y1+15)), (0, 0, 255), 2)
-            ## cv2.putText(cv_image, "Estimated Position", (int(x1+15), int(y1)), 0, 0.5, (0,0,255),2)
-            #print("After x=", x1)
-            #print("After y=", y1)
-
-        
-
+            ret, rvec, tvec = cv2.solvePnP(objp, corners2, self.cameraMatrix, self.distortion)
             # draw axis and detect marker
             #aruco.drawAxis(cv_image, mtx, dist, rvec[0], tvec[0], 0.01)
             aruco.drawDetectedMarkers(cv_image, corners)
 
-            # draw ID text on top of image
-            # font = cv2.FONT_HERSHEY_SIMPLEX
-            #cv2.putText(cv_image, "X: {}".format(cor_x), (0,364), font, 1, (0,255,0), 2, cv2.LINE_AA)
-            #cv2.putText(cv_image, "Y: {}".format(cor_y), (0, 400), font, 1, (0, 255, 0), 2, cv2.LINE_AA)
-
             # incorporate pose information together and print on image
             dis = Float32MultiArray()
-
-            # 기존의 cor_x, cor_y, cor_z에서 estimated value로 바꿈!
-            #dis.data = (x1, y1)
-            #dis.data = (cor_x, cor_y)
 
             x_sum = corners[0][0][0][0]+ corners[0][0][1][0]+ corners[0][0][2][0]+ corners[0][0][3][0]
             y_sum = corners[0][0][0][1]+ corners[0][0][1][1]+ corners[0][0][2][1]+ corners[0][0][3][1]
@@ -230,18 +210,63 @@ class ImageToDistance:
             y_center_px = y_sum*.25
             rospy.loginfo(f"pixel x: {x_center_px}, y: {y_center_px}")
 
-            dx = width*.5 - x_center_px
-            dy = height*.5 - y_center_px
-            rospy.loginfo(f"dist x: {dx}, y: {dy}")
-            dis.data = (dx, dy)
+            #=========================Camera coordinate============================
+            # Initialize camera_coord in pixels
+            camera_coord = np.array([[x_center_px], [y_center_px], [1]])
+            # Perform matrix inversion and multiplication
+            camera_coord = np.linalg.inv(self.cameraMatrix).dot(camera_coord)
+            # Multiply with z_world to get the coordinates in units of z_world
+            camera_coord *= tvec[2][0]
+
+            camera_coord = np.array([camera_coord[0][0], camera_coord[1][0], camera_coord[2][0], 1])
+            rospy.loginfo(f"camera_coord: {camera_coord}")
+            #==========================FCU coordinate=================================
+            x_rotation = 0
+            y_rotation = 0
+            z_rotation = -90 * math.pi / 180
+            fcu_x_rotation = np.array([[1, 0, 0], [0, np.cos(x_rotation), -np.sin(x_rotation)], [0, np.sin(x_rotation), np.cos(x_rotation)]])
+            fcu_y_rotation = np.array([[np.cos(y_rotation), 0, np.sin(y_rotation)], [0, 1, 0], [-np.sin(y_rotation), 0, np.cos(y_rotation)]])
+            fcu_z_rotation = np.array([[np.cos(z_rotation), -np.sin(z_rotation), 0], [np.sin(z_rotation), np.cos(z_rotation), 0], [0, 0, 1]])
+            fcu_rotation = fcu_x_rotation.dot(fcu_y_rotation).dot(fcu_z_rotation)
+            fcu_translation = np.array([0, 0, 0])
+
+            fcu_coord = np.eye(4)
+            fcu_coord[:3, :3] = fcu_rotation
+            fcu_coord[:3, 3] = fcu_translation
+            fcu_coord = fcu_coord.dot(camera_coord)
+
+            rospy.loginfo(f"fcu_coord: {fcu_coord}")
+
+            #==========================Local coordinate(ENU)==============================
+            imu_x = self.imu_data.orientation.x
+            imu_y = self.imu_data.orientation.y
+            imu_z = self.imu_data.orientation.z
+            imu_w = self.imu_data.orientation.w
+
+            imu_roll, imu_pitch, imu_yaw = to_euler_angles(imu_x, imu_y, imu_z, imu_w)
+
+            x_rotation = imu_roll
+            y_rotation = imu_pitch
+            z_rotation = imu_yaw
+            rospy.loginfo(f"roll, pitch, yaw: {imu_roll}, {imu_pitch}, {imu_yaw}")
+
+            local_x_rotation = np.array([[1, 0, 0], [0, np.cos(x_rotation), -np.sin(x_rotation)], [0, np.sin(x_rotation), np.cos(x_rotation)]])
+            local_y_rotation = np.array([[np.cos(y_rotation), 0, np.sin(y_rotation)], [0, 1, 0], [-np.sin(y_rotation), 0, np.cos(y_rotation)]])
+            local_z_rotation = np.array([[np.cos(z_rotation), -np.sin(z_rotation), 0], [np.sin(z_rotation), np.cos(z_rotation), 0], [0, 0, 1]])
+            local_rotation = local_x_rotation.dot(local_y_rotation).dot(local_z_rotation)
+            local_translation = np.array([0, 0, 0])
+
+            local_coord = np.eye(4)
+            local_coord[:3, :3] = local_rotation
+            local_coord[:3, 3] = local_translation
+            local_coord_inv = np.linalg.inv(local_coord)
+            #local_coord = local_coord_inv.dot(fcu_coord)
+            local_coord = local_coord.dot(fcu_coord)
+            rospy.loginfo(f"local_coord: {local_coord}")
+        
+
+            dis.data = (0, 0)
             
-            # # Debugging
-            # rospy.loginfo(f"x : {dis.data[0][0]}, y: {dis.data[1][0]}, z: {dis.data[2][0]}")
-            #rospy.loginfo(f"dis.data : {dis.data}")
-
-            # cv2.imshow("Image", cv_image)
-            # cv2.waitKey(3)
-
             # Node publish - pose information
             self.distance_pub.publish(dis)
 
