@@ -220,7 +220,7 @@ class ImageToDistance:
 
             camera_coord = np.array([camera_coord[0][0], camera_coord[1][0], camera_coord[2][0], 1])
             rospy.loginfo(f"camera_coord: {camera_coord}")
-            #==========================FCU coordinate=================================
+            #==========================FCU coordinate(FRD: forward-right-down)=================================
             x_rotation = 0
             y_rotation = 0
             z_rotation = -90 * math.pi / 180
@@ -237,7 +237,7 @@ class ImageToDistance:
 
             rospy.loginfo(f"fcu_coord: {fcu_coord}")
 
-            #==========================Local coordinate(ENU)==============================
+            #==========================Local coordinate(ENU: east-north-up)==============================
             imu_x = self.imu_data.orientation.x
             imu_y = self.imu_data.orientation.y
             imu_z = self.imu_data.orientation.z
@@ -253,7 +253,7 @@ class ImageToDistance:
             local_x_rotation = np.array([[1, 0, 0], [0, np.cos(x_rotation), -np.sin(x_rotation)], [0, np.sin(x_rotation), np.cos(x_rotation)]])
             local_y_rotation = np.array([[np.cos(y_rotation), 0, np.sin(y_rotation)], [0, 1, 0], [-np.sin(y_rotation), 0, np.cos(y_rotation)]])
             local_z_rotation = np.array([[np.cos(z_rotation), -np.sin(z_rotation), 0], [np.sin(z_rotation), np.cos(z_rotation), 0], [0, 0, 1]])
-            local_rotation = local_x_rotation.dot(local_y_rotation).dot(local_z_rotation)
+            local_rotation = local_z_rotation.dot(local_y_rotation).dot(local_x_rotation)
             local_translation = np.array([0, 0, 0])
 
             local_coord = np.eye(4)
