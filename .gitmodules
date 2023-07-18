@@ -1,0 +1,3 @@
+[submodule "yolo_cross_detection/yolov5"]
+	path = yolo_cross_detection/yolov5
+	url = https://github.com/ultralytics/yolov5.git

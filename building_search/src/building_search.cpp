@@ -7,8 +7,8 @@ BuildingSearch::BuildingSearch(const ros::NodeHandle& n_private) : nh_(n_private
     nh_.param("/bulding_search_mission", building_search_mission, 2.0);
     nh_.param("/marker_mission", marker_mission, 3.0);
     //TODO: 처음 넣어주는 GPS 마지막 좌표로 설정되어야 함.
-    nh_.param("/last_goal_x", last_goal_x, 0.0);
-    nh_.param("/last_goal_y", last_goal_y, 135.0);
+    nh_.param("/last_goal_x", last_goal_x, 65.0);
+    nh_.param("/last_goal_y", last_goal_y, -42.0);
     nh_.param("/last_goal_z", last_goal_z, 15.0);
 
     // ROS Publisher & Subscriber
