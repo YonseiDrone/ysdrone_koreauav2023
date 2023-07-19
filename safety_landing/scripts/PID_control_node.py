@@ -4,11 +4,25 @@ import tf
 import math
 from geometry_msgs.msg import Twist
 from geometry_msgs.msg import PoseStamped
-from mavros_msgs.msg import State
+from mavros_msgs.msg import State, PositionTarget
 from mavros_msgs.srv import CommandBool, SetMode, CommandTOL
 from math import pow, atan2, sqrt, pi, degrees
 from std_msgs.msg import Float32MultiArray
 
+def to_quaternion(yaw, pitch, roll):
+    cy = math.cos(yaw * 0.5)
+    sy = math.sin(yaw * 0.5)
+    cp = math.cos(pitch * 0.5)
+    sp = math.sin(pitch * 0.5)
+    cr = math.cos(roll * 0.5)
+    sr = math.sin(roll * 0.5)
+
+    qx = sr*cp*cy - cr*sp*sy
+    qy = cr*sp*cy + sr*cp*sy
+    qz = cr*cp*sy - sr*sp*cy
+    qw = cr*cp*cy + sr*sp*sy
+
+    return qx, qy, qz, qw
 
 class PID:
     def __init__(self, kp=1, kd=0, ki=0, dt=0.01):
@@ -22,7 +36,7 @@ class PID:
         self.dt = dt
 
         # Default Error Initialization
-        self.err_previous = 0.001
+        self.err_previous = 0.00001
         self.err_accmulation = 0
 
     def compute(self, err):
@@ -47,6 +61,7 @@ class PIDControl:
         self.relative_dis = Float32MultiArray()
         self.landing_velocity = Twist()
         self.tolerance_position = 0.01
+        self.desired_landing = PositionTarget
 
         #Subscriber
         self.relative_dis_sub = rospy.Subscriber("/relative_distance", Float32MultiArray, self.relative_dis_cb)
@@ -55,8 +70,8 @@ class PIDControl:
 
         #Publisher
         # Send the desired velocity of UAV to control_node in offboard package.
-        self.landing_vel_pub = rospy.Publisher("/landing_velocity", Twist, queue_size=1)
-
+        self.desired_landing_pub = rospy.Publisher('/desired_landing', PositionTarget, queue_size=1)
+        
         # controller frequency in Hz
         self.hz = 20.0
         # Limit the rate in which ROS nodes run
@@ -66,7 +81,14 @@ class PIDControl:
         # PID controller class 
         self.pid_x = PID(kp=1, dt = self.dt)
         self.pid_y = PID(kp=1, dt = self.dt)
-        self.pid_z = PID(kp=1, dt = self.dt)
+
+        # Desired orientation
+        self.roll = 0
+        self.pitch = 0
+        self.yaw = 90*math.pi/180
+
+        # Initialization
+        self.relative_dis.data = [0, 0, 0]
     
     def relative_dis_cb(self, msg):
         self.relative_dis = msg
@@ -83,75 +105,25 @@ class PIDControl:
      
 
     def safety_landing(self):
-        while True:
-            if len(self.relative_dis.data) >=3:
-                err_x = self.relative_dis.data[0] - 0
-                err_y = self.relative_dis.data[1] - 0
-                err_z = self.relative_dis.data[2] - 0
-                err = self.calc_distance(err_x, err_y, err_z)
-                break
-        
-        while (err >= self.tolerance_position or self.current_pose.pose.position.z > 0.5):
-            #rospy.loginfo(f"Distance form goal: {err}")
+        err_x = self.relative_dis.data[0] - 0
+        err_y = self.relative_dis.data[1] - 0
+        err_z = self.relative_dis.data[2] - 0
+        err = self.calc_distance(err_x, err_y, err_z)
 
-            err_x = self.relative_dis.data[0] - 0
-            err_y = self.relative_dis.data[1] - 0
-            err_z = self.relative_dis.data[2] - 0
-            err = self.calc_distance(err_x, err_y, err_z)
+        #Compute PID
+        vx = self.pid_x.compute(err_x)
+        vy = self.pid_y.compute(err_y)
 
-            #Compute PID
-            vx = self.pid_x.compute(err_x)
-            vy = self.pid_y.compute(err_y)
-            vz = self.pid_z.compute(err_z)
+        self.desired_landing.yaw = self.yaw
+        self.desired_landing.velocity.x = -vx
+        self.desired_landing.velocity.y = -vy
+        self.desired_landing.velocity.z = -0.5
 
-            self.landing_velocity.linear.x = -vx
-            self.landing_velocity.linear.y = -vy
-            #self.landing_velocity.linear.z = -vz * 0.1
-            self.landing_velocity.angular.x = 0.0
-            self.landing_velocity.angular.y = 0.0
-            self.landing_velocity.angular.z = 0.0
+        self.desired_landing_pub.publish(self.desired_landing)
 
-            #Debugging
-            #rospy.loginfo(f"err_x: {err_x}, vx: {vx} || err_y: {err_y}, vy: {vy} || err_z: {err_z}, vz: {vz}")
-            self.landing_vel_pub.publish(self.landing_velocity)
-            self.rate.sleep()
-        
-        # 0<z<0.5인 경우(즉, 거리가 가까워서 이미지가 안보이는 경우)
-        if self.current_pose.pose.position.z > 0:
-            rospy.loginfo("Landing Begin")
-            self.landing_velocity.linear.x = 0.0
-            self.landing_velocity.linear.y = 0.0
-            self.landing_velocity.linear.z = -1.0
-
-            for i in range(10):
-                self.landing_vel_pub.publish(self.landing_velocity)
-                self.rate.sleep()
-
-        # Stop the drone
-        self.landing_velocity.linear.x = 0.0
-        self.landing_velocity.linear.y = 0.0
-        self.landing_velocity.linear.z = 0.0
-        self.landing_vel_pub.publish(self.landing_velocity)
-
-        #Land
-        rospy.loginfo("\n Landing")
-        rospy.wait_for_service('/mavros/cmd/land')
-        try:
-            land_client = rospy.ServiceProxy('/mavros/cmd/land', CommandTOL)
-            response = land_client(altitude=0, latitude=0, longitude=0, min_pitch=0, yaw=0)
-            rospy.loginfo(response)
-        except rospy.ServiceException as e:
-            print("Landing failed: %s" %e)
-
-        # Disarm
-        print("\n Disarming")
-        rospy.wait_for_service('/mavros/cmd/arming')
-        try:
-            arming_client = rospy.ServiceProxy('/mavros/cmd/arming', CommandBool)
-            response = arming_client(value = False)
-            rospy.loginfo(response)
-        except rospy.ServiceException as e:
-            print("Disarming failed: %s" %e)
+        #Debugging
+        #rospy.loginfo(f"err_x: {err_x}, vx: {vx} || err_y: {err_y}, vy: {vy} || err_z: {err_z}, vz: {vz}")
+        self.rate.sleep()
 
 
 if __name__ == "__main__":
@@ -165,7 +137,7 @@ if __name__ == "__main__":
             rate.sleep()
         rospy.loginfo("PID_control_node : FCU connected")
 
-        PID_control_node_handler.safety_landing()
+        rospy.Timer(rospy.Duration(0.05), PID_control_node_handler.safety_landing)
     
         rospy.spin()
 

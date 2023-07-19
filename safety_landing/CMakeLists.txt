@@ -162,6 +162,7 @@ include_directories(
 catkin_install_python(PROGRAMS
   scripts/PID_control_node.py
   scripts/vision_kalman_filter_node.py
+  scripts/aruco_VIO.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 

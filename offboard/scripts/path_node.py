@@ -47,24 +47,26 @@ class PathClass(object):
 
             self.destination_cmd.header.stamp = self.time_now
 
+            #=====================================LOCAL COORDINATE=======================================================
             self.destination_positions = [
-                (0.0, 8.0, 4.0),
-                (8.0, 8.0, 4.0),
-                (0.0, 0.0, 4.0)
+                (0.0, 10.5, 3.0),
+                (7.7, 10.5, 3.0),
+                (14.0, 10.5, 3.0)
             ]
+            #=============================================================================================================
 
             self.destination_cmd.pose.position.x, self.destination_cmd.pose.position.y, self.destination_cmd.pose.position.z = self.destination_positions[self.destination_cnt]
 
             if self.calc_xy_err(self.destination_cmd, self.current_pose) < 0.3 and self.calc_z_err(self.destination_cmd, self.current_pose) < 0.2:
                 self.destination_cnt += 1
                 # 여기 나중에 수정 필요
-                if self.destination_cnt > 4:
-                    self.destination_cnt = 0
+                # if self.destination_cnt > 4:
+                #     self.destination_cnt = 0
             
             self.destination_cmd_pub.publish(self.destination_cmd)
 
-            if self.destination_cnt == 3:
-                reponse = self.call_drone_command(4)
+            # if self.destination_cnt == 3:
+            #     reponse = self.call_drone_command(4)
 
     def call_drone_command(self, data):
             rospy.wait_for_service('/drone_command')

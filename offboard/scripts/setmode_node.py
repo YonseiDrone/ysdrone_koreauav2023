@@ -3,15 +3,18 @@ import rospy
 
 from mavros_msgs.msg import State 
 from mavros_msgs.srv import CommandBool, SetMode
+from geometry_msgs.msg import PoseStamped
 
 
 class SetmodeClass(object):
     def __init__(self):
         self.current_state = State()
+        self.current_pose = PoseStamped()
         self.service_timeout = 30
 
         #Subscriber
         self.state_sub = rospy.Subscriber("/mavros/state", State, self.state_cb)
+        self.pose_sub = rospy.Subscriber("/mavros/local_position/pose", PoseStamped, self.pose_cb)
         #Service
         rospy.loginfo('-------------Waiting for services to connect--------------')
         try:
@@ -21,6 +24,9 @@ class SetmodeClass(object):
             rospy.logerr('Failed to initialize service')
         self.arming_client = rospy.ServiceProxy('/mavros/cmd/arming', CommandBool)
         self.set_mode_client = rospy.ServiceProxy('/mavros/set_mode', SetMode)
+
+    def pose_cb(self, msg):
+        self.current_pose = msg
 
     def state_cb(self, msg):
         prev_state = self.current_state
@@ -33,7 +39,12 @@ class SetmodeClass(object):
 
     def setMode(self, mode):
         rospy.logerr('Mode Changed')
-        rate = rospy.Rate(0.5)
+        rate = rospy.Rate(20)
+        for _ in range(10):
+            self.current_pose.pose.position.x = 0
+            self.current_pose.pose.position.y = 0
+            self.current_pose.pose.position.z = 0
+            rate.sleep()
         try:
             response = self.set_mode_client(base_mode = 0, custom_mode = mode)
             # return response.mode_sent

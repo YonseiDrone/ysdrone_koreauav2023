@@ -82,20 +82,30 @@ class ControlClass(object):
         self.destination_command_marker = Marker()
         self.destination_command_marker_array = MarkerArray()
         self.cmd_state = 0
-        self.landing_velocity = Twist()
         self.isly_destination_command_marker = Marker()
         self.isly_destination_command_marker_array = MarkerArray()
+        self.desired_landing = PositionTarget()
     
         #Subscriber
         self.destination_command_sub = rospy.Subscriber('/destination_command', PoseStamped, self.destination_command_cb)
         self.state_sub = rospy.Subscriber('/mavros/state', State, self.state_cb)
         self.pose_sub = rospy.Subscriber('/mavros/local_position/pose', PoseStamped, self.pose_cb)
-        self.landing_velocity_sub = rospy.Subscriber('/landing_velocity', Twist, self.landing_vel_cb)
         self.isly_destination_command_sub = rospy.Subscriber('/isly_destination_command', PoseStamped, self.isly_destination_command_cb)
+        self.desired_landing_sub = rospy.Subscriber('/desired_landing', PositionTarget, self.desired_landing_cb)
         #Publisher
         self.mavros_cmd_pub = rospy.Publisher('/mavros/setpoint_raw/local', PositionTarget, queue_size=1)
         self.avoidance_pos_pub = rospy.Publisher('input/goal_position', MarkerArray, queue_size=1)
         self.landing_velocity_pub = rospy.Publisher('/mavros/setpoint_velocity/cmd_vel_unstamped', Twist, queue_size=1)
+        self.desired_landing_pub = rospy.Publisher('/mavros/setpoint_raw/local', PositionTarget, queue_size=1)
+    
+    def desired_landing_cb(self, msg):
+        self.desired_landing.coordinate_frame = PositionTarget.FRAME_LOCAL_NED
+        self.desired_landing.type_mask = PositionTarget.IGNORE_AFX | PositionTarget.IGNORE_AFY | PositionTarget.IGNORE_AFZ | PositionTarget.IGNORE_PX | PositionTarget.IGNORE_PY | PositionTarget.IGNORE_PZ
+        self.desired_landing.velocity.x = msg.velocity.x
+        self.desired_landing.velocity.y = msg.velocity.y
+        self.desired_landing.velocity.z = msg.velocity.z
+        self.desired_landing.yaw = msg.yaw
+        self.desired_landing.yaw_rate = 1
 
     def destination_command_cb(self, msg):
         # 여기 나중에 pre_destioination_command, destination_command 찍어서 디버깅해보자!!
@@ -118,10 +128,6 @@ class ControlClass(object):
     
     def pose_cb(self, msg):
         self.current_pose = msg
-
-    def landing_vel_cb(self, msg):
-        self.landing_velocity = msg
-        self.landing_velocity.linear.z = -1
         
     def isly_destination_command_cb(self, msg):
         # if (self.isly_destination_command.pose.position.x != msg.pose.position.x) or (self.isly_destination_command.pose.position.y != msg.pose.position.y) or (self.isly_destination_command.pose.position.z != msg.pose.position.z):
@@ -174,8 +180,9 @@ class ControlClass(object):
 
         # Mission 4(Safety Landing)
         if self.cmd_state == 4:
-            self.landing_velocity_pub.publish(self.landing_velocity)
-            rospy.loginfo(f"Velocity - x: {self.landing_velocity.linear.x}, y: {self.landing_velocity.linear.y}, z : {self.landing_velocity.linear.z}")
+            self.desired_landing_pub.publish(self.desired_landing)
+            rospy.loginfo(f"Velocity - x: {self.desired_landing.velocity.x}, y: {self.desired_landing.velocity.y}, z : {self.desired_landing.velocity.z}")
+
 
 
 
