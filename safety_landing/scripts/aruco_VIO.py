@@ -223,9 +223,9 @@ class ImageToDistance:
             camera_coord = np.array([camera_coord[0][0], camera_coord[1][0], camera_coord[2][0], 1])
             rospy.loginfo(f"camera_coord: {camera_coord}")
 
-            x = -camera_coord[0][0]
-            y = camera_coord[1][0]
-            z = camera_coord[2][0]
+            x = -camera_coord[0]
+            y = camera_coord[1]
+            z = camera_coord[2]
         
 
             dis.data = (x, y, z)
@@ -242,9 +242,9 @@ class ImageToDistance:
         	# Node publish - cv_image
         cv_image = cv2.cvtColor(cv_image, cv2.COLOR_BGR2RGB)
         self.image_pub.publish(self.bridge.cv2_to_imgmsg(cv_image, "rgb8"))
-        cv_image = cv2.cvtColor(cv_image, cv2.COLOR_BGR2RGB)
-        cv2.imshow("cv_image", cv_image)
-        cv2.waitKey(5)
+        #cv_image = cv2.cvtColor(cv_image, cv2.COLOR_BGR2RGB)
+        #cv2.imshow("cv_image", cv_image)
+        #cv2.waitKey(5)
 
 if __name__ == "__main__":
     rospy.init_node('aruco_vision_node', anonymous=True)

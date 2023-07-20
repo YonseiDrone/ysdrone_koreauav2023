@@ -4,7 +4,7 @@
 BuildingSearch::BuildingSearch(const ros::NodeHandle& nh_private) : nh_(nh_private), rate(30)
 {
     // ROS params
-    nh_.param("/srv_mode", srv_mode, false);
+    nh_.param("/srv_mode", srv_mode, true);
     nh_.param("/bulding_search_mission", building_search_mission, 2.0);
     nh_.param("/marker_mission", marker_mission, 3.0);
 
@@ -12,6 +12,7 @@ BuildingSearch::BuildingSearch(const ros::NodeHandle& nh_private) : nh_(nh_priva
     nh_.param("/destination_3_pose_y", last_goal_y, 0.0);
     nh_.param("/destination_z", last_goal_z, 3.0);
     ROS_INFO("[Building Search] Initialized");
+    ROS_INFO("Last Goal %f, %f, %f", last_goal_x, last_goal_y, last_goal_z);
 
     // ROS Publisher & Subscriber
 	cloud_sub = nh_.subscribe<sensor_msgs::PointCloud2>("/local_pointcloud", 1, boost::bind(&BuildingSearch::cloud_cb, this, _1));
@@ -35,6 +36,7 @@ void BuildingSearch::command(const ros::TimerEvent& event)
 {
     if(last_goal_reached)
     {
+	ROS_INFO("Last goal reached! srv_mode: %d, mission: %f", srv_mode, mission);
         // Auto Mode    or
         // Service Mode => Is request.command same as buidling search mission number?
         if(!srv_mode || mission == building_search_mission)
@@ -128,7 +130,7 @@ void BuildingSearch::pose_cb(const geometry_msgs::PoseStamped::ConstPtr& msg)
     current_pose = *msg;
     if ((calc_xy_err(current_pose.pose.position, last_goal_x, last_goal_y) < 0.3) && (calc_z_err(current_pose.pose.position.z, last_goal_z) < 0.2)) {
         last_goal_reached = true;
-        ROS_WARN("[Building Search] Last WPT Reached!");
+        // ROS_WARN("[Building Search] Last WPT Reached!");
     }
 }
 

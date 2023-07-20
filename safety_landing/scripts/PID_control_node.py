@@ -9,21 +9,6 @@ from mavros_msgs.srv import CommandBool, SetMode, CommandTOL
 from math import pow, atan2, sqrt, pi, degrees
 from std_msgs.msg import Float32MultiArray
 
-def to_quaternion(yaw, pitch, roll):
-    cy = math.cos(yaw * 0.5)
-    sy = math.sin(yaw * 0.5)
-    cp = math.cos(pitch * 0.5)
-    sp = math.sin(pitch * 0.5)
-    cr = math.cos(roll * 0.5)
-    sr = math.sin(roll * 0.5)
-
-    qx = sr*cp*cy - cr*sp*sy
-    qy = cr*sp*cy + sr*cp*sy
-    qz = cr*cp*sy - sr*sp*cy
-    qw = cr*cp*cy + sr*sp*sy
-
-    return qx, qy, qz, qw
-
 class PID:
     def __init__(self, kp=1, kd=0, ki=0, dt=0.01):
 
@@ -61,7 +46,7 @@ class PIDControl:
         self.relative_dis = Float32MultiArray()
         self.landing_velocity = Twist()
         self.tolerance_position = 0.01
-        self.desired_landing = PositionTarget
+        self.desired_landing = PositionTarget()
 
         #Subscriber
         self.relative_dis_sub = rospy.Subscriber("/relative_distance", Float32MultiArray, self.relative_dis_cb)
@@ -104,11 +89,15 @@ class PIDControl:
         return sqrt(pow((x_d), 2) + pow((y_d), 2) + pow((z_d), 2))
      
 
-    def safety_landing(self):
-        err_x = self.relative_dis.data[0] - 0
-        err_y = self.relative_dis.data[1] - 0
-        err_z = self.relative_dis.data[2] - 0
-        err = self.calc_distance(err_x, err_y, err_z)
+    def safety_landing(self, e):
+        try:
+            err_x = self.relative_dis.data[0] - 0
+            err_y = self.relative_dis.data[1] - 0
+            err_z = self.relative_dis.data[2] - 0
+            err = self.calc_distance(err_x, err_y, err_z)
+        except IndexError:
+            rospy.loginfo("Warning: self.relative_dis.data has less than 3 elements. Skipping this cycle")
+            return
 
         #Compute PID
         vx = self.pid_x.compute(err_x)
@@ -117,7 +106,7 @@ class PIDControl:
         self.desired_landing.yaw = self.yaw
         self.desired_landing.velocity.x = -vx
         self.desired_landing.velocity.y = -vy
-        self.desired_landing.velocity.z = -0.5
+        self.desired_landing.velocity.z = -0.1
 
         self.desired_landing_pub.publish(self.desired_landing)
 

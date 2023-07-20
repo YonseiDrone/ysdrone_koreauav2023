@@ -4,7 +4,7 @@ import rospy
 import math
 
 from sensor_msgs.msg import NavSatFix
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PoseStamped, PointStamped
 from mavros_msgs.msg import State
 from ysdrone_msgs.srv import *
 
@@ -23,6 +23,10 @@ class PathClass(object):
         self.init_destination_cmd = PoseStamped()
         self.init_destination_check = False
 
+        self.destination_1_pose = PointStamped()
+        self.destination_2_pose = PointStamped()
+        self.destination_3_pose = PointStamped()
+
         #Subscriber
         self.state_sub = rospy.Subscriber('/mavros/state', State, self.state_cb)
         self.pose_sub = rospy.Subscriber('/mavros/local_position/pose', PoseStamped, self.pose_cb)
@@ -30,11 +34,11 @@ class PathClass(object):
         if rospy.has_param('/destination_z'):
             self.destination_z = rospy.get_param('/destination_z')
         else:
-            self.destination_z = 15.0
+            self.destination_z = 3.0
             
-        self.waypoint_1_sub = rospy.Subscriber('/WPT_1_enu', NavSatFix, self.waypoint_1_cb)
-        self.waypoint_2_sub = rospy.Subscriber('/WPT_2_enu', NavSatFix, self.waypoint_2_cb)
-        self.waypoint_3_sub = rospy.Subscriber('/WPT_3_enu', NavSatFix, self.waypoint_3_cb)
+        self.waypoint_1_sub = rospy.Subscriber('/WPT_1_enu', PointStamped, self.waypoint_1_cb)
+        self.waypoint_2_sub = rospy.Subscriber('/WPT_2_enu', PointStamped, self.waypoint_2_cb)
+        self.waypoint_3_sub = rospy.Subscriber('/WPT_3_enu', PointStamped, self.waypoint_3_cb)
         #Publisher
         self.destination_cmd_pub = rospy.Publisher('/destination_command', PoseStamped, queue_size=50)
 
@@ -50,27 +54,24 @@ class PathClass(object):
             self.init_destination_check = True
             
     def waypoint_1_cb(self, msg):
-        self.destination_1_pose_x = msg.pose.pose.position.x
-        self.destination_1_pose_y = msg.pose.pose.position.y
+        self.destination_1_pose = msg
         
-        rospy.set_param('/destination_1_pose_x', self.destination_1_pose_x)
-        rospy.set_param('/destination_1_pose_y', self.destination_1_pose_y)
+        rospy.set_param('/destination_1_pose_x', self.destination_1_pose.point.x)
+        rospy.set_param('/destination_1_pose_y', self.destination_1_pose.point.y)
         rospy.set_param('/destination_1_pose_z', self.destination_z)
         
     def waypoint_2_cb(self, msg):
-        self.destination_2_pose_x = msg.pose.pose.position.x
-        self.destination_2_pose_y = msg.pose.pose.position.y
+        self.destination_2_pose = msg
         
-        rospy.set_param('/destination_2_pose_x', self.destination_2_pose_x)
-        rospy.set_param('/destination_2_pose_y', self.destination_2_pose_y)
+        rospy.set_param('/destination_2_pose_x', self.destination_2_pose.point.x)
+        rospy.set_param('/destination_2_pose_y', self.destination_2_pose.point.y)
         rospy.set_param('/destination_2_pose_z', self.destination_z)
         
     def waypoint_3_cb(self, msg):
-        self.destination_3_pose_x = msg.pose.pose.position.x
-        self.destination_3_pose_y = msg.pose.pose.position.y
+        self.destination_3_pose = msg
         
-        rospy.set_param('/destination_3_pose_x', self.destination_3_pose_x)
-        rospy.set_param('/destination_3_pose_y', self.destination_3_pose_y)
+        rospy.set_param('/destination_3_pose_x', self.destination_3_pose.point.x)
+        rospy.set_param('/destination_3_pose_y', self.destination_3_pose.point.y)
         rospy.set_param('/destination_3_pose_z', self.destination_z)
         
 
@@ -88,10 +89,13 @@ class PathClass(object):
 
             #=====================================LOCAL COORDINATE=======================================================
             self.destination_positions = [
-                (self.destination_1_pose_x, self.destination_1_pose_y, self.destination_z),
-                (self.destination_2_pose_x, self.destination_2_pose_y, self.destination_z),
-                (self.destination_3_pose_x, self.destination_3_pose_y, self.destination_z)
+                (self.destination_1_pose.point.x, self.destination_1_pose.point.y, self.destination_z),
+                (self.destination_2_pose.point.x, self.destination_2_pose.point.y, self.destination_z),
+                (self.destination_3_pose.point.x, self.destination_3_pose.point.y, self.destination_z)
             ]
+            #rospy.loginfo(f"Waypoint 1 - x: {self.destination_1_pose.point.x}, y: {self.destination_1_pose.point.y}, z: {self.destination_z}")
+            #rospy.loginfo(f"Waypoint 2 - x: {self.destination_2_pose.point.x}, y: {self.destination_2_pose.point.y}, z: {self.destination_z}")
+            #rospy.loginfo(f"Waypoint 3 - x: {self.destination_3_pose.point.x}, y: {self.destination_3_pose.point.y}, z: {self.destination_z}")
             #=============================================================================================================
 
             self.destination_cmd.pose.position.x, self.destination_cmd.pose.position.y, self.destination_cmd.pose.position.z = self.destination_positions[self.destination_cnt]
@@ -135,9 +139,6 @@ if __name__ == "__main__":
         rospy.logwarn(f"Check Z value! {path_node_handler.destination_z}")
         rospy.logwarn(f"Check Z value! {path_node_handler.destination_z}")
         rospy.logwarn(f"Check Z value! {path_node_handler.destination_z}")
-        rospy.loginfo(f"WPT#1: {path_node_handler.destination_1_pose_x}, {path_node_handler.destination_1_pose_y}")
-        rospy.loginfo(f"WPT#2: {path_node_handler.destination_2_pose_x}, {path_node_handler.destination_2_pose_y}")
-        rospy.loginfo(f"WPT#3: {path_node_handler.destination_3_pose_x}, {path_node_handler.destination_3_pose_y}")
 
         rospy.Timer(rospy.Duration(0.05), path_node_handler.destination_publisher)
 

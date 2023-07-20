@@ -79,6 +79,7 @@ class ControlClass(object):
     def __init__(self):
         self.current_state = State()
         self.current_pose = PoseStamped()
+        self.target_pose = PoseStamped()
         self.destination_command_marker = Marker()
         self.destination_command_marker_array = MarkerArray()
         self.cmd_state = 0
@@ -94,7 +95,7 @@ class ControlClass(object):
         self.isly_destination_command_sub = rospy.Subscriber('/isly_destination_command', PoseStamped, self.isly_destination_command_cb)
         self.desired_landing_sub = rospy.Subscriber('/desired_landing', PositionTarget, self.desired_landing_cb)
         #Publisher
-        self.mavros_cmd_pub = rospy.Publisher('/mavros/setpoint_raw/local', PositionTarget, queue_size=1)
+        self.target_pose_pub = rospy.Publisher('/mavros/setpoint_position/local', PoseStamped, queue_size=1)
         self.avoidance_pos_pub = rospy.Publisher('input/goal_position', MarkerArray, queue_size=1)
         self.landing_velocity_pub = rospy.Publisher('/mavros/setpoint_velocity/cmd_vel_unstamped', Twist, queue_size=1)
         self.desired_landing_pub = rospy.Publisher('/mavros/setpoint_raw/local', PositionTarget, queue_size=1)
@@ -159,6 +160,9 @@ class ControlClass(object):
         elif self.cmd_state == 4:
             self.resp.mode = 'Safety Landing Mode'
             self.resp.res = True
+        elif self.cmd_state == 5:
+            self.resp.mode = 'Position Control Mode'
+            self.resp.res = True
         rospy.loginfo(f'Received request : {req.command} && Current Mode : {self.resp.mode} && Enable :{self.resp.res}')
         return self.resp
     
@@ -183,6 +187,12 @@ class ControlClass(object):
         if self.cmd_state == 4:
             self.desired_landing_pub.publish(self.desired_landing)
             rospy.loginfo(f"Velocity - x: {self.desired_landing.velocity.x}, y: {self.desired_landing.velocity.y}, z : {self.desired_landing.velocity.z}")
+        # Mission 5(Position Control)
+        if self.cmd_state == 5:
+            self.target_pose.pose.position.x = 0
+            self.target_pose.pose.position.y = 0
+            self.target_pose.pose.position.z = 2.5
+            self.target_pose_pub.publish(self.target_pose)
 
 
 
