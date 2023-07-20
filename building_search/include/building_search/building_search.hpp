@@ -32,7 +32,7 @@
 class BuildingSearch
 {
 public:
-	BuildingSearch(const ros::NodeHandle& n_private);
+	BuildingSearch(const ros::NodeHandle& nh_private);
 	void turn_to_target_yaw(double x, double y, double z);
 	void move_to_target(double x, double y, double z);
 	void command(const ros::TimerEvent& event);
@@ -47,7 +47,10 @@ public:
 	bool call_drone_command(const double& data);
 
 private:
+	double calc_xy_err(const geometry_msgs::Point &pos, double last_goal_x, double last_goal_y);
+	double calc_z_err(float z, double last_goal_z);
 // paramters
+	bool srv_mode;
 	double last_goal_x;
 	double last_goal_y;
 	double last_goal_z;
@@ -68,8 +71,9 @@ private:
 	geometry_msgs::PoseStamped current_target_position;
 	visualization_msgs::Marker goal_pos;
 	ysdrone_msgs::DroneCommand srv;
-	int mission;
+	int mission = -1;
 	int searching_status;
+	bool last_goal_reached;
 
 
 

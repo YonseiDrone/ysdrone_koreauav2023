@@ -3,22 +3,38 @@
 import rospy
 import math
 
+from sensor_msgs.msg import NavSatFix
 from geometry_msgs.msg import PoseStamped
 from mavros_msgs.msg import State
 from ysdrone_msgs.srv import *
 
 class PathClass(object):
     def __init__(self):
+        if rospy.has_param('srv_mode'):
+            self.srv_mode = rospy.get_param('srv_mode')
+        else:
+            self.srv_mode = False
+        self.destination_cnt = 0
+        
         self.current_state = State()
         self.current_pose = PoseStamped()
         self.destination_cmd = PoseStamped()
+        
         self.init_destination_cmd = PoseStamped()
         self.init_destination_check = False
-        self.destination_cnt = 0
 
         #Subscriber
         self.state_sub = rospy.Subscriber('/mavros/state', State, self.state_cb)
         self.pose_sub = rospy.Subscriber('/mavros/local_position/pose', PoseStamped, self.pose_cb)
+        
+        if rospy.has_param('/destination_z'):
+            self.destination_z = rospy.get_param('/destination_z')
+        else:
+            self.destination_z = 15.0
+            
+        self.waypoint_1_sub = rospy.Subscriber('/WPT_1_enu', NavSatFix, self.waypoint_1_cb)
+        self.waypoint_2_sub = rospy.Subscriber('/WPT_2_enu', NavSatFix, self.waypoint_2_cb)
+        self.waypoint_3_sub = rospy.Subscriber('/WPT_3_enu', NavSatFix, self.waypoint_3_cb)
         #Publisher
         self.destination_cmd_pub = rospy.Publisher('/destination_command', PoseStamped, queue_size=50)
 
@@ -32,6 +48,31 @@ class PathClass(object):
             self.init_destination_cmd.pose.position.x = self.current_pose.pose.position.x
             self.init_destination_cmd.pose.position.y = self.current_pose.pose.position.y
             self.init_destination_check = True
+            
+    def waypoint_1_cb(self, msg):
+        self.destination_1_pose_x = msg.pose.pose.position.x
+        self.destination_1_pose_y = msg.pose.pose.position.y
+        
+        rospy.set_param('/destination_1_pose_x', self.destination_1_pose_x)
+        rospy.set_param('/destination_1_pose_y', self.destination_1_pose_y)
+        rospy.set_param('/destination_1_pose_z', self.destination_z)
+        
+    def waypoint_2_cb(self, msg):
+        self.destination_2_pose_x = msg.pose.pose.position.x
+        self.destination_2_pose_y = msg.pose.pose.position.y
+        
+        rospy.set_param('/destination_2_pose_x', self.destination_2_pose_x)
+        rospy.set_param('/destination_2_pose_y', self.destination_2_pose_y)
+        rospy.set_param('/destination_2_pose_z', self.destination_z)
+        
+    def waypoint_3_cb(self, msg):
+        self.destination_3_pose_x = msg.pose.pose.position.x
+        self.destination_3_pose_y = msg.pose.pose.position.y
+        
+        rospy.set_param('/destination_3_pose_x', self.destination_3_pose_x)
+        rospy.set_param('/destination_3_pose_y', self.destination_3_pose_y)
+        rospy.set_param('/destination_3_pose_z', self.destination_z)
+        
 
     def calc_xy_err(self, cur, dest):
         xy_err = math.sqrt((cur.pose.position.x - dest.pose.position.x)**2 + (cur.pose.position.y - dest.pose.position.y)**2)
@@ -43,21 +84,20 @@ class PathClass(object):
     
     def destination_publisher(self, e):
         if self.init_destination_check:
-            self.time_now = rospy.get_rostime()
-
-            self.destination_cmd.header.stamp = self.time_now
+            self.destination_cmd.header.stamp = rospy.get_rostime()
 
             #=====================================LOCAL COORDINATE=======================================================
             self.destination_positions = [
-                (0.0, 10.5, 3.0),
-                (7.7, 10.5, 3.0),
-                (14.0, 10.5, 3.0)
+                (self.destination_1_pose_x, self.destination_1_pose_y, self.destination_z),
+                (self.destination_2_pose_x, self.destination_2_pose_y, self.destination_z),
+                (self.destination_3_pose_x, self.destination_3_pose_y, self.destination_z)
             ]
             #=============================================================================================================
 
             self.destination_cmd.pose.position.x, self.destination_cmd.pose.position.y, self.destination_cmd.pose.position.z = self.destination_positions[self.destination_cnt]
 
             if self.calc_xy_err(self.destination_cmd, self.current_pose) < 0.3 and self.calc_z_err(self.destination_cmd, self.current_pose) < 0.2:
+                # TODO 대회에서 요구하는 정확도 확인 && 실제로 어느정도 정확하게 나오는지 확인 필요.
                 self.destination_cnt += 1
                 # 여기 나중에 수정 필요
                 # if self.destination_cnt > 4:
@@ -65,8 +105,11 @@ class PathClass(object):
             
             self.destination_cmd_pub.publish(self.destination_cmd)
 
-            # if self.destination_cnt == 3:
-            #     reponse = self.call_drone_command(4)
+            if self.destination_cnt >= len(self.destination_positions):
+                if self.srv_mode is False:
+                    # Auto Mode
+                    # Call Building Searching Mode
+                    self.call_drone_command(2)
 
     def call_drone_command(self, data):
             rospy.wait_for_service('/drone_command')
@@ -89,6 +132,12 @@ if __name__ == "__main__":
         while not rospy.is_shutdown() and not path_node_handler.current_state.connected:
             rate.sleep()
         rospy.loginfo("Path node : FCU connected")
+        rospy.logwarn(f"Check Z value! {path_node_handler.destination_z}")
+        rospy.logwarn(f"Check Z value! {path_node_handler.destination_z}")
+        rospy.logwarn(f"Check Z value! {path_node_handler.destination_z}")
+        rospy.loginfo(f"WPT#1: {path_node_handler.destination_1_pose_x}, {path_node_handler.destination_1_pose_y}")
+        rospy.loginfo(f"WPT#2: {path_node_handler.destination_2_pose_x}, {path_node_handler.destination_2_pose_y}")
+        rospy.loginfo(f"WPT#3: {path_node_handler.destination_3_pose_x}, {path_node_handler.destination_3_pose_y}")
 
         rospy.Timer(rospy.Duration(0.05), path_node_handler.destination_publisher)
 

@@ -6,17 +6,17 @@
   <node pkg="geodetic_utils" type="gps_to_pose_conversion_node" name="gps_to_pose_conversion_node_1" output="screen" >
 		<remap from="gps" to="/WPT_1_lla" />
 		<remap from="imu" to="/mavros/imu/data" />
-		<remap from="gps_position" to="/WPT_1_ned" />
+		<remap from="gps_position" to="/WPT_1_enu" />
 	</node>
   <node pkg="geodetic_utils" type="gps_to_pose_conversion_node" name="gps_to_pose_conversion_node_2" output="screen" >
 		<remap from="gps" to="/WPT_2_lla" />
 		<remap from="imu" to="/mavros/imu/data" />
-		<remap from="gps_position" to="/WPT_2_ned" />
+		<remap from="gps_position" to="/WPT_2_enu" />
 	</node>
   <node pkg="geodetic_utils" type="gps_to_pose_conversion_node" name="gps_to_pose_conversion_node_3" output="screen" >
 		<remap from="gps" to="/WPT_3_lla" />
 		<remap from="imu" to="/mavros/imu/data" />
-		<remap from="gps_position" to="/WPT_3_ned" />
+		<remap from="gps_position" to="/WPT_3_enu" />
 	</node>
 
 </launch>

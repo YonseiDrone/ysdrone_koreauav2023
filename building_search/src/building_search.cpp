@@ -1,15 +1,17 @@
 #include "building_search.hpp"
 
 
-BuildingSearch::BuildingSearch(const ros::NodeHandle& n_private) : nh_(n_private), rate(30)
+BuildingSearch::BuildingSearch(const ros::NodeHandle& nh_private) : nh_(nh_private), rate(30)
 {
     // ROS params
+    nh_.param("/srv_mode", srv_mode, false);
     nh_.param("/bulding_search_mission", building_search_mission, 2.0);
     nh_.param("/marker_mission", marker_mission, 3.0);
-    //TODO: 처음 넣어주는 GPS 마지막 좌표로 설정되어야 함.
-    nh_.param("/last_goal_x", last_goal_x, 65.0);
-    nh_.param("/last_goal_y", last_goal_y, -42.0);
-    nh_.param("/last_goal_z", last_goal_z, 15.0);
+
+    nh_.param("/destination_3_pose_x", last_goal_x, 0.0);
+    nh_.param("/destination_3_pose_y", last_goal_y, 0.0);
+    nh_.param("/destination_z", last_goal_z, 3.0);
+    ROS_INFO("[Building Search] Initialized");
 
     // ROS Publisher & Subscriber
 	cloud_sub = nh_.subscribe<sensor_msgs::PointCloud2>("/local_pointcloud", 1, boost::bind(&BuildingSearch::cloud_cb, this, _1));
@@ -26,43 +28,49 @@ BuildingSearch::BuildingSearch(const ros::NodeHandle& n_private) : nh_(n_private
 	current_pose = geometry_msgs::PoseStamped();
 	
     searching_status = 0;
+    last_goal_reached = false;
 }
 
 void BuildingSearch::command(const ros::TimerEvent& event)
 {
-    if(mission == building_search_mission)
+    if(last_goal_reached)
     {
-        if(searching_status == 0)
+        // Auto Mode    or
+        // Service Mode => Is request.command same as buidling search mission number?
+        if(!srv_mode || mission == building_search_mission)
         {
-            ROS_INFO("# marker: %ld", marker_array.markers.size());
-            if(marker_array.markers.size() > 0)
-            {  
-                ROS_INFO("Turn to Target yaw");
-                turn_to_target_yaw(marker_array.markers[0].pose.position.x, marker_array.markers[0].pose.position.y, marker_array.markers[0].pose.position.z);
-            }
-        }
-        else if(searching_status == 1)
-        {
-            ROS_INFO("searching status: 1");
-            ROS_INFO("# marker: %ld", marker_array.markers.size());
-            ROS_INFO("Goal x: %f, y: %f, z: %f", marker_array.markers[0].pose.position.x, marker_array.markers[0].pose.position.y, marker_array.markers[0].pose.position.z);
-            goal_pos_pub.publish(marker_array);
-            if ((distance(marker_array.markers[0], current_pose) < 3.0) && (distance(marker_array.markers[0], current_pose) > 0.5))
-                ROS_INFO("Distance     : %.4f\n", distance(marker_array.markers[0], current_pose));
-            else if(distance(marker_array.markers[0], current_pose) < 0.5)
+            if(searching_status == 0)
             {
-                ROS_INFO("Goal %f %f %f reached!\n", marker_array.markers[0].pose.position.x, marker_array.markers[0].pose.position.y, marker_array.markers[0].pose.position.z);
-                ros::spinOnce();
-                searching_status += 1;
+                ROS_INFO("# marker: %ld", marker_array.markers.size());
+                if(marker_array.markers.size() > 0)
+                {  
+                    ROS_INFO("Turn to Target yaw");
+                    turn_to_target_yaw(marker_array.markers[0].pose.position.x, marker_array.markers[0].pose.position.y, marker_array.markers[0].pose.position.z);
+                }
             }
-        }
-        // If object is detected, publish the estimated yaw to the clustered object
-        else if (searching_status == 2)
-        {   
-            ROS_INFO("searching status: 2");
-            ROS_INFO("Goal x: %f, y: %f, z: %f", marker_array.markers[0].pose.position.x, marker_array.markers[0].pose.position.y, marker_array.markers[0].pose.position.z);
-            move_to_target(marker_array.markers[0].pose.position.x, marker_array.markers[0].pose.position.y, marker_array.markers[0].pose.position.z);
-            ROS_INFO("[Building Search] Done");
+            else if(searching_status == 1)
+            {
+                ROS_INFO("searching status: 1");
+                ROS_INFO("# marker: %ld", marker_array.markers.size());
+                ROS_INFO("Goal x: %f, y: %f, z: %f", marker_array.markers[0].pose.position.x, marker_array.markers[0].pose.position.y, marker_array.markers[0].pose.position.z);
+                goal_pos_pub.publish(marker_array);
+                if ((distance(marker_array.markers[0], current_pose) < 3.0) && (distance(marker_array.markers[0], current_pose) > 0.5))
+                    ROS_INFO("Distance     : %.4f\n", distance(marker_array.markers[0], current_pose));
+                else if(distance(marker_array.markers[0], current_pose) < 0.5)
+                {
+                    ROS_INFO("Goal %f %f %f reached!\n", marker_array.markers[0].pose.position.x, marker_array.markers[0].pose.position.y, marker_array.markers[0].pose.position.z);
+                    ros::spinOnce();
+                    searching_status += 1;
+                }
+            }
+            // If object is detected, publish the estimated yaw to the clustered object
+            else if (searching_status == 2)
+            {   
+                ROS_INFO("searching status: 2");
+                ROS_INFO("Goal x: %f, y: %f, z: %f", marker_array.markers[0].pose.position.x, marker_array.markers[0].pose.position.y, marker_array.markers[0].pose.position.z);
+                move_to_target(marker_array.markers[0].pose.position.x, marker_array.markers[0].pose.position.y, marker_array.markers[0].pose.position.z);
+                ROS_INFO("[Building Search] Done");
+            }
         }
     }
 }
@@ -102,10 +110,26 @@ double BuildingSearch::orientationGap(const geometry_msgs::PoseStamped& p1, cons
     return yaw_diff;
 }
 
+double BuildingSearch::calc_xy_err(const geometry_msgs::Point &pos, double last_goal_x, double last_goal_y)
+{
+    double xy_err = sqrt(pow((pos.x - last_goal_x), 2) + pow((pos.y - last_goal_y), 2));
+    return xy_err;
+}
+
+double BuildingSearch::calc_z_err(float z, double last_goal_z)
+{
+    double z_err = sqrt(pow((z - last_goal_z), 2));
+    return z_err;
+}
+
 // ROS callback functions
 void BuildingSearch::pose_cb(const geometry_msgs::PoseStamped::ConstPtr& msg)
 {
     current_pose = *msg;
+    if ((calc_xy_err(current_pose.pose.position, last_goal_x, last_goal_y) < 0.3) && (calc_z_err(current_pose.pose.position.z, last_goal_z) < 0.2)) {
+        last_goal_reached = true;
+        ROS_WARN("[Building Search] Last WPT Reached!");
+    }
 }
 
 void BuildingSearch::cloud_cb(const sensor_msgs::PointCloud2ConstPtr& input)

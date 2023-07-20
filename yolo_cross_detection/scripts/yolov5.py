@@ -3,7 +3,7 @@
 import rospy, rospkg
 import cv2, torch
 from sensor_msgs.msg import Image
-from cv_bridge import CvBridge
+from cv_bridge import CvBridge, CvBridgeError
 
 
 rospack = rospkg.RosPack()
@@ -39,10 +39,10 @@ def image_subscriber(image_msg):
 
 if __name__ == '__main__':
     try:
-	    rospy.init_node('yolo_node', anonymous=True)
-	    image_pub = rospy.Publisher('/cross_image', Image, queue_size=10)
-	    # rospy.Subscriber('/usb_cam/image_raw', Image, image_subscriber)
-	    rospy.Subscriber('/camera/rgb/image_raw', Image, image_subscriber)
-	    rospy.spin()
+        rospy.init_node('yolo_node', anonymous=True)
+        image_pub = rospy.Publisher('/cross_image', Image, queue_size=10)
+        # rospy.Subscriber('/usb_cam/image_raw', Image, image_subscriber)
+        rospy.Subscriber('/camera/rgb/image_raw', Image, image_subscriber)
+        rospy.spin()
     except rospy.ROSInterruptException:
         pass
