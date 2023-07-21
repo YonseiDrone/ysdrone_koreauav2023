@@ -86,6 +86,7 @@ class ControlClass(object):
         self.isly_destination_command_marker = Marker()
         self.isly_destination_command_marker_array = MarkerArray()
         self.desired_landing = PositionTarget()
+        self.mission_num = Float32()
     
         #Subscriber
         self.state_sub = rospy.Subscriber('/mavros/state', State, self.state_cb)
@@ -99,6 +100,8 @@ class ControlClass(object):
         self.avoidance_pos_pub = rospy.Publisher('input/goal_position', MarkerArray, queue_size=1)
         self.landing_velocity_pub = rospy.Publisher('/mavros/setpoint_velocity/cmd_vel_unstamped', Twist, queue_size=1)
         self.desired_landing_pub = rospy.Publisher('/mavros/setpoint_raw/local', PositionTarget, queue_size=1)
+        
+        self.mission_pub = rospy.Publisher('/mission', Float32, queue_size=1)
     
     def desired_landing_cb(self, msg):
         self.desired_landing.coordinate_frame = PositionTarget.FRAME_LOCAL_NED
@@ -175,6 +178,10 @@ class ControlClass(object):
             rospy.loginfo(f'Target Waypoint - x :{self.destination_command_marker.pose.position.x}, y :{self.destination_command_marker.pose.position.y}, z :{self.destination_command_marker.pose.position.z}')
 
         # Mission 2(Building Searching)
+        if self.cmd_state == 2:
+            self.mission_num.data = self.cmd_state
+            self.mission_pub.publish(self.mission_num)
+            rospy.loginfo(f"Mission published to [Building Search] data: {self.mission_num.data}")
 
         
         # Mission 3(Comeback Home)

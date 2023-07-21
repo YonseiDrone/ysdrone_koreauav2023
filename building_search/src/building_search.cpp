@@ -21,8 +21,9 @@ BuildingSearch::BuildingSearch(const ros::NodeHandle& nh_private) : nh_(nh_priva
 	goal_pos_pub = nh_.advertise<visualization_msgs::MarkerArray>("/input/goal_position", 1);
 	goal_yaw_pub = nh_.advertise<geometry_msgs::PoseStamped>("/mavros/setpoint_position/local", 10);
     // ROS service for DroneCommand
-    client = nh_.serviceClient<ysdrone_msgs::DroneCommand>("drone_command");
-    server = nh_.advertiseService("drone_command", &BuildingSearch::srv_cb, this);
+    // client = nh_.serviceClient<ysdrone_msgs::DroneCommand>("drone_command");
+    // server = nh_.advertiseService("drone_command", &BuildingSearch::srv_cb, this);
+    mission_sub = nh_.subscribe<std_msgs::Float32>("/mission", 1, boost::bind(&BuildingSearch::mission_cb, this, _1));
 
     // ROS msgs
 	current_target_position = geometry_msgs::PoseStamped();
@@ -30,6 +31,7 @@ BuildingSearch::BuildingSearch(const ros::NodeHandle& nh_private) : nh_(nh_priva
 	
     searching_status = 0;
     last_goal_reached = false;
+    init_mission_sub = false;
 }
 
 void BuildingSearch::command(const ros::TimerEvent& event)
@@ -205,6 +207,16 @@ void BuildingSearch::cloud_cb(const sensor_msgs::PointCloud2ConstPtr& input)
     }
 }
 
+void BuildingSearch::mission_cb(const std_msgs::Float32::ConstPtr &msg)
+{
+    mission = msg->data;
+    if(!init_mission_sub)
+    {
+        ROS_INFO("[Building Search] Mission set to %d", mission);
+        init_mission_sub = true;
+    }
+}
+
 // Stay in last goal position but turn yaw to target
 void BuildingSearch::turn_to_target_yaw(double x, double y, double z)
 {
@@ -270,22 +282,22 @@ void BuildingSearch::move_to_target(double x, double y, double z)
     ROS_INFO("Move to target Done!");
 }
 
-bool BuildingSearch::call_drone_command(const double& data) {
-    srv.request.command = data;
+// bool BuildingSearch::call_drone_command(const double& data) {
+//     srv.request.command = data;
 
-    if (client.call(srv)) {
-        return true;    // The service call was successful
-    } else {
-        ROS_ERROR("Failed to call service drone_command");
-        return false;   // The service call failed
-    }
-}
+//     if (client.call(srv)) {
+//         return true;    // The service call was successful
+//     } else {
+//         ROS_ERROR("Failed to call service drone_command");
+//         return false;   // The service call failed
+//     }
+// }
 
-bool BuildingSearch::srv_cb(ysdrone_msgs::DroneCommand::Request &req, ysdrone_msgs::DroneCommand::Response &res)
-{
-    // DroneCommand command
-    mission = req.command;
-    ROS_INFO("[Building Search] Mission set to %d", mission);
-    return true;
-}
+// bool BuildingSearch::srv_cb(ysdrone_msgs::DroneCommand::Request &req, ysdrone_msgs::DroneCommand::Response &res)
+// {
+//     // DroneCommand command
+//     mission = req.command;
+//     ROS_INFO("[Building Search] Mission set to %d", mission);
+//     return true;
+// }
 

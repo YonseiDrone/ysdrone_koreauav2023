@@ -3,6 +3,7 @@
 
 #include <ros/ros.h>
 #include <std_msgs/Bool.h>
+#include <std_msgs/Float32.h>
 #include <sensor_msgs/PointCloud2.h>
 #include <geometry_msgs/PoseStamped.h>
 #include <visualization_msgs/Marker.h>
@@ -43,8 +44,9 @@ public:
 /// ROS callbacks
 	void pose_cb(const geometry_msgs::PoseStamped::ConstPtr& msg);
 	void cloud_cb(const sensor_msgs::PointCloud2ConstPtr& input);
-	bool srv_cb(ysdrone_msgs::DroneCommand::Request &req, ysdrone_msgs::DroneCommand::Response &res);
-	bool call_drone_command(const double& data);
+	// bool srv_cb(ysdrone_msgs::DroneCommand::Request &req, ysdrone_msgs::DroneCommand::Response &res);
+	// bool call_drone_command(const double& data);
+	void mission_cb(const std_msgs::Float32::ConstPtr &msg);
 
 private:
 	double calc_xy_err(const geometry_msgs::Point &pos, double last_goal_x, double last_goal_y);
@@ -61,7 +63,7 @@ private:
 	ros::NodeHandle nh_;
 	ros::Rate rate;
 	ros::Publisher goal_pos_pub, goal_yaw_pub;
-	ros::Subscriber cloud_sub, pos_sub;
+	ros::Subscriber cloud_sub, pos_sub, mission_sub;
 // services
 	ros::ServiceClient client;
 	ros::ServiceServer server;
@@ -70,10 +72,10 @@ private:
 	visualization_msgs::MarkerArray marker_array;
 	geometry_msgs::PoseStamped current_target_position;
 	visualization_msgs::Marker goal_pos;
-	ysdrone_msgs::DroneCommand srv;
+	// ysdrone_msgs::DroneCommand srv;
 	int mission = -1;
 	int searching_status;
-	bool last_goal_reached;
+	bool last_goal_reached, init_mission_sub;
 
 
 

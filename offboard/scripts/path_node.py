@@ -13,7 +13,7 @@ class PathClass(object):
         if rospy.has_param('srv_mode'):
             self.srv_mode = rospy.get_param('srv_mode')
         else:
-            self.srv_mode = False
+            self.srv_mode = True
         self.destination_cnt = 0
         
         self.current_state = State()
@@ -35,6 +35,9 @@ class PathClass(object):
             self.destination_z = rospy.get_param('/destination_z')
         else:
             self.destination_z = 3.0
+            rospy.set_param('/destination_z', self.destination_z)
+        rospy.logwarn(f"Check Z value! {rospy.get_param('/destination_z')}")
+        rospy.logwarn(f"Check Z value! {rospy.get_param('/destination_z')}")
             
         self.waypoint_1_sub = rospy.Subscriber('/WPT_1_enu', PointStamped, self.waypoint_1_cb)
         self.waypoint_2_sub = rospy.Subscriber('/WPT_2_enu', PointStamped, self.waypoint_2_cb)
@@ -58,21 +61,18 @@ class PathClass(object):
         
         rospy.set_param('/destination_1_pose_x', self.destination_1_pose.point.x)
         rospy.set_param('/destination_1_pose_y', self.destination_1_pose.point.y)
-        rospy.set_param('/destination_1_pose_z', self.destination_z)
         
     def waypoint_2_cb(self, msg):
         self.destination_2_pose = msg
         
         rospy.set_param('/destination_2_pose_x', self.destination_2_pose.point.x)
         rospy.set_param('/destination_2_pose_y', self.destination_2_pose.point.y)
-        rospy.set_param('/destination_2_pose_z', self.destination_z)
         
     def waypoint_3_cb(self, msg):
         self.destination_3_pose = msg
         
         rospy.set_param('/destination_3_pose_x', self.destination_3_pose.point.x)
         rospy.set_param('/destination_3_pose_y', self.destination_3_pose.point.y)
-        rospy.set_param('/destination_3_pose_z', self.destination_z)
         
 
     def calc_xy_err(self, cur, dest):
