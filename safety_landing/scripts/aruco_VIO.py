@@ -147,8 +147,8 @@ class ImageToDistance:
         self.imu_sub = rospy.Subscriber("/mavros/imu/data", Imu, self.imu_cb)
         # cameraMatrix and distortion coefficents
         # Camera intrinsic matrix [[f_x, 0, c_x], [0, f_y, c_y], [0, 0, 1]]
-        self.cameraMatrix = np.array([[1347.578105, 0. , 640.0], [ 0.0 , 1347.578105, 360.0], [0.0 , 0.0 , 1.0]])
-        self.distortion = np.array([[-0.042381, 0.122926, -0.003833, -0.017073]])
+        self.cameraMatrix = np.array([[653.054314, 0. , 640.0], [ 0.0 , 653.054314, 360.0], [0.0 , 0.0 , 1.0]])
+        self.distortion = np.array([[-0.250806, 0.065280, 0.001852, -0.000407]])
         
         # aruco basic setting
         self.aruco_dict = aruco.getPredefinedDictionary(aruco.DICT_6X6_50)
@@ -158,6 +158,7 @@ class ImageToDistance:
         self.cap = cv2.VideoCapture(0)
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+        self.cap.set(cv2.CAP_PROP_EXPOSURE, -10)
 
     def state_cb(self, msg):
         self.current_state = msg
@@ -173,7 +174,7 @@ class ImageToDistance:
         ret, cv_image = self.cap.read()
         height, width, _ = cv_image.shape
 
-        marker_size = 0.11
+        marker_size = 0.325
         objp = np.array([[0, 0, 0], [0, marker_size, 0], [marker_size, marker_size, 0], [marker_size, 0, 0]], dtype=np.float32)
 
         # hese parameters include things like marker detection thresholds, corner refinement methods, and adaptive thresholding parameters

@@ -10,11 +10,14 @@ class SetmodeClass(object):
     def __init__(self):
         self.current_state = State()
         self.current_pose = PoseStamped()
+        self.target_pose = PoseStamped()
         self.service_timeout = 30
 
         #Subscriber
         self.state_sub = rospy.Subscriber("/mavros/state", State, self.state_cb)
         self.pose_sub = rospy.Subscriber("/mavros/local_position/pose", PoseStamped, self.pose_cb)
+        
+        self.target_pose_pub = rospy.Publisher("/mavros/setpoint_position/local", PoseStamped, queue_size=1)
         #Service
         rospy.loginfo('-------------Waiting for services to connect--------------')
         try:
@@ -40,10 +43,11 @@ class SetmodeClass(object):
     def setMode(self, mode):
         rospy.logerr('Mode Changed')
         rate = rospy.Rate(10)
-        for _ in range(30):
-            self.current_pose.pose.position.x = 0
-            self.current_pose.pose.position.y = 0
-            self.current_pose.pose.position.z = 0
+        for _ in range(20):
+            self.target_pose.pose.position.x = 0
+            self.target_pose.pose.position.y = 0
+            self.target_pose.pose.position.z = 0
+            self.target_pose_pub.publish(self.target_pose)
             rate.sleep()
         try:
             response = self.set_mode_client(base_mode = 0, custom_mode = mode)
