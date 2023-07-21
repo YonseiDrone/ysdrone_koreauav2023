@@ -35,8 +35,8 @@ class PathClass(object):
         else:
             self.destination_z = 3.0
             rospy.set_param('/destination_z', self.destination_z)
-        rospy.logwarn(f"Check Z value! {rospy.get_param('/destination_z')}")
-        rospy.logwarn(f"Check Z value! {rospy.get_param('/destination_z')}")
+        rospy.logwarn(f"Check Z param! {rospy.get_param('/destination_z')}")
+        rospy.logwarn(f"Check Z param! {rospy.get_param('/destination_z')}")
             
         self.waypoint_1_sub = rospy.Subscriber('/WPT_1_enu', PointStamped, self.waypoint_1_cb)
         self.waypoint_2_sub = rospy.Subscriber('/WPT_2_enu', PointStamped, self.waypoint_2_cb)
@@ -97,7 +97,14 @@ class PathClass(object):
             #rospy.loginfo(f"Waypoint 3 - x: {self.destination_3_pose.point.x}, y: {self.destination_3_pose.point.y}, z: {self.destination_z}")
             #=============================================================================================================
 
-            self.destination_cmd.pose.position.x, self.destination_cmd.pose.position.y, self.destination_cmd.pose.position.z = self.destination_positions[self.destination_cnt]
+            if self.destination_cnt < len(self.destination_cmd):
+                self.destination_cmd.pose.position.x, self.destination_cmd.pose.position.y, self.destination_cmd.pose.position.z = self.destination_positions[self.destination_cnt]
+                self.destination_cmd_pub.publish(self.destination_cmd)
+            else:
+                if self.srv_mode is False:
+                    # Auto Mode
+                    # Call Building Searching Mode
+                    self.call_drone_command(2)
 
             if self.calc_xy_err(self.destination_cmd, self.current_pose) < 0.3 and self.calc_z_err(self.destination_cmd, self.current_pose) < 0.2:
                 # TODO 대회에서 요구하는 정확도 확인 && 실제로 어느정도 정확하게 나오는지 확인 필요.
@@ -106,13 +113,7 @@ class PathClass(object):
                 # if self.destination_cnt > 4:
                 #     self.destination_cnt = 0
             
-            self.destination_cmd_pub.publish(self.destination_cmd)
 
-            if self.destination_cnt >= len(self.destination_positions):
-                if self.srv_mode is False:
-                    # Auto Mode
-                    # Call Building Searching Mode
-                    self.call_drone_command(2)
 
     def call_drone_command(self, data):
             rospy.wait_for_service('/drone_command')
@@ -135,7 +136,6 @@ if __name__ == "__main__":
         while not rospy.is_shutdown() and not path_node_handler.current_state.connected:
             rate.sleep()
         rospy.loginfo("Path node : FCU connected")
-        rospy.logwarn(f"Check Z value! {path_node_handler.destination_z}")
         rospy.logwarn(f"Check Z value! {path_node_handler.destination_z}")
         rospy.logwarn(f"Check Z value! {path_node_handler.destination_z}")
 

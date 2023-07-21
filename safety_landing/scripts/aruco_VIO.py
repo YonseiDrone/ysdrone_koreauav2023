@@ -248,7 +248,7 @@ class ImageToDistance:
         #cv2.waitKey(5)
 
 if __name__ == "__main__":
-    rospy.init_node('aruco_vision_node', anonymous=True)
+    rospy.init_node('aruco_VIO', anonymous=True)
 
     try:
         vision_kalman_filter_node_handler = ImageToDistance()
@@ -257,7 +257,7 @@ if __name__ == "__main__":
         # wait for FCU connection
         #while not rospy.is_shutdown() and not vision_kalman_filter_node_handler.current_state.connected:
         #rate.sleep()
-        rospy.loginfo("aruco vision node : FCU connected")
+        rospy.loginfo("aruco VIO node : FCU connected")
         rospy.Timer(rospy.Duration(0.1), vision_kalman_filter_node_handler.image_to_distance_cb)
 
         rospy.spin()

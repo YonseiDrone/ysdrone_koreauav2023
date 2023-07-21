@@ -1,0 +1,12 @@
+<launch>
+	<param name="/srv_mode" value="true" />
+	<param name="/destination_z" value="3.0" />
+
+	<!-- GPS to ENU-->
+	<include file="$(find koreauav_utils)/launch/yaml_to_gps.launch"/>
+	<include file="$(find koreauav_utils)/launch/gps_to_enu.launch"/>
+
+`	<node pkg="offboard" type="path_node.py" name="path_node" required="true" output="screen"/>
+`	<node pkg="isly" type="isly_path_node.py" name="isly_path_node" required="true" output="screen"/>
+
+</launch>
