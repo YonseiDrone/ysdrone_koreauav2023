@@ -158,12 +158,18 @@ class ControlClass(object):
             self.resp.mode = 'Building Searching Mode'
             self.resp.res = True
         elif self.cmd_state == 3:
-            self.resp.mode = 'Of course I Still Love You'
+            self.resp.mode = 'Cross Detection Mode'
             self.resp.res = True
         elif self.cmd_state == 4:
-            self.resp.mode = 'Safety Landing Mode'
+            self.resp.mode = 'Cargo Launching Mode'
             self.resp.res = True
         elif self.cmd_state == 5:
+            self.resp.mode = 'Of course I Still Love You'
+            self.resp.res = True
+        elif self.cmd_state == 6:
+            self.resp.mode = 'Safety Landing Mode'
+            self.resp.res = True
+        elif self.cmd_state == 7:
             self.resp.mode = 'Position Control Mode'
             self.resp.res = True
         rospy.loginfo(f'Received request : {req.command} && Current Mode : {self.resp.mode} && Enable :{self.resp.res}')
@@ -184,19 +190,27 @@ class ControlClass(object):
             rospy.loginfo(f"Mission published to [Building Search] data: {self.mission_num.data}")
 
         
-        # Mission 3(Comeback Home)
+        # Mission 3(Cross Detection Mode)
         if self.cmd_state == 3:
+            pass
+
+        # Mission 4(Cargo Launching Mode)
+        if self.cmd_state == 4:
+            pass
+
+        # Mission 5(Of course I Still Love you)
+        if self.cmd_state == 5:
             self.avoidance_pos_pub.publish(self.isly_destination_command_marker_array)
             rospy.loginfo(f'Target Waypoint - x :{self.isly_destination_command_marker.pose.position.x}, y :{self.isly_destination_command_marker.pose.position.y}, z :{self.isly_destination_command_marker.pose.position.z}')
 
-
-        # Mission 4(Safety Landing)
-        if self.cmd_state == 4:
+        # Mission 6(Safety Landing)
+        if self.cmd_state == 6:
             self.desired_landing_pub.publish(self.desired_landing)
             rospy.loginfo(f"Velocity - x: {self.desired_landing.velocity.x}, y: {self.desired_landing.velocity.y}, z : {self.desired_landing.velocity.z}")
         
-        # Mission 5(Position Control)
-        if self.cmd_state == 5:
+        
+        # Mission 7(Position Control)
+        if self.cmd_state == 7:
             self.target_pose.pose.position.x = 0
             self.target_pose.pose.position.y = 0
             self.target_pose.pose.position.z = 3.0

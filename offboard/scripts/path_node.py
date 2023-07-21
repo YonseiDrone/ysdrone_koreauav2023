@@ -3,7 +3,6 @@
 import rospy
 import math
 
-from sensor_msgs.msg import NavSatFix
 from geometry_msgs.msg import PoseStamped, PointStamped
 from mavros_msgs.msg import State
 from ysdrone_msgs.srv import *
