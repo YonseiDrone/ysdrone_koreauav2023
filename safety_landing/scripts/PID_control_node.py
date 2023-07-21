@@ -99,7 +99,7 @@ class PIDControl:
             self.desired_landing.yaw = self.yaw
             self.desired_landing.velocity.x = 0
             self.desired_landing.velocity.y = 0
-            self.desired_landing.velocity.z = -0.2
+            self.desired_landing.velocity.z = -0.3
             self.desired_landing_pub.publish(self.desired_landing)
             rospy.loginfo("Warning: self.relative_dis.data has less than 3 elements. Skipping this cycle")
             return
@@ -109,9 +109,9 @@ class PIDControl:
         vy = self.pid_y.compute(err_y)
 
         self.desired_landing.yaw = self.yaw
-        self.desired_landing.velocity.x = -vx*0.8
-        self.desired_landing.velocity.y = -vy*0.8
-        self.desired_landing.velocity.z = -0.2
+        self.desired_landing.velocity.x = -vx*0.5
+        self.desired_landing.velocity.y = -vy*0.5
+        self.desired_landing.velocity.z = -0.3
 
         self.desired_landing_pub.publish(self.desired_landing)
 
