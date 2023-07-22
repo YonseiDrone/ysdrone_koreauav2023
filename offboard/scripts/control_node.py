@@ -88,14 +88,16 @@ class ControlClass(object):
         self.isly_destination_command_marker_array = MarkerArray()
         self.desired_landing = PositionTarget()
         self.mission_num = Float32()
+        self.RL_target_vel = Twist()
     
         #Subscriber
         self.state_sub = rospy.Subscriber('/mavros/state', State, self.state_cb)
-        self.pose_sub = rospy.Subscriber('/mavros/local_position/pose', PoseStamped, self.pose_cb)
-        
+        self.pose_sub = rospy.Subscriber('/mavros/local_position/pose', PoseStamped, self.pose_cb) 
         self.destination_command_sub = rospy.Subscriber('/destination_command', PoseStamped, self.destination_command_cb)
         self.isly_destination_command_sub = rospy.Subscriber('/isly_destination_command', PoseStamped, self.isly_destination_command_cb)
         self.desired_landing_sub = rospy.Subscriber('/desired_landing', PositionTarget, self.desired_landing_cb)
+        self.RL_target_vel_sub = rospy.Subscriber('/landing_velocity', Twist, self.RL_target_vel_cb)
+
         #Publisher
         self.target_pose_pub = rospy.Publisher('/mavros/setpoint_position/local', PoseStamped, queue_size=1)
         self.avoidance_pos_pub = rospy.Publisher('input/goal_position', MarkerArray, queue_size=1)
@@ -149,6 +151,9 @@ class ControlClass(object):
         self.isly_destination_command_marker_array.markers.clear()
         self.isly_destination_command_marker_array.markers.append(self.isly_destination_command_marker)
     
+    def RL_target_vel_cb(self, msg):
+        self.RL_target_vel = msg
+    
     def cmdreact_cb(self, req):
         self.cmd_state = req.command
         self.resp = DroneCommandResponse()
@@ -175,6 +180,9 @@ class ControlClass(object):
             self.resp.res = True
         elif self.cmd_state == 8:
             self.resp.mode = 'Position Landing'
+            self.resp.res = True
+        elif self.cmd_state == 9:
+            self.resp.mode = 'RL Landing with GPS'
             self.resp.res = True
         rospy.loginfo(f'Received request : {req.command} && Current Mode : {self.resp.mode} && Enable :{self.resp.res}')
         return self.resp
@@ -231,10 +239,17 @@ class ControlClass(object):
             self.target_pose.pose.position.y = 0
             self.target_pose.pose.position.z = 4.0
             self.target_pose_pub.publish(self.target_pose)
+
+        # Mission 8(Position Landing)    
         if self.cmd_state == 8:
             self.target_pose.pose.position.x = 0
             self.target_pose.pose.position.y = 0
             self.target_pose.pose.position.z = self.current_pose.pose.position.z - 0.2
+
+        # Mission 9(RL Landing with GPS)
+        if self.cmd_state == 9:
+            self.landing_velocity_pub.publish(self.RL_target_vel)
+            rospy.loginfo(f"Velocity - x: {self.RL_target_vel.linear.x}, y: {self.RL_target_vel.linear.y}, z: {self.RL_target_vel.linear.z}")
 
 
 

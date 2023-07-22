@@ -161,8 +161,8 @@ include_directories(
 # in contrast to setup.py, you can choose the destination
 catkin_install_python(PROGRAMS
   scripts/PID_control_node.py
-  scripts/vision_kalman_filter_node.py
   scripts/aruco_VIO.py
+  scripts/RL_control_node.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 
