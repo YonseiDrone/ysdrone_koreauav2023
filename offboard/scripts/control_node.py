@@ -184,6 +184,9 @@ class ControlClass(object):
         elif self.cmd_state == 9:
             self.resp.mode = 'RL Landing with GPS'
             self.resp.res = True
+        elif self.cmd_state == 10:
+            self.resp.mode = 'RL Landing with Aruco'
+            self.resp.res = True
         rospy.loginfo(f'Received request : {req.command} && Current Mode : {self.resp.mode} && Enable :{self.resp.res}')
         return self.resp
     
@@ -248,6 +251,11 @@ class ControlClass(object):
 
         # Mission 9(RL Landing with GPS)
         if self.cmd_state == 9:
+            self.landing_velocity_pub.publish(self.RL_target_vel)
+            rospy.loginfo(f"Velocity - x: {self.RL_target_vel.linear.x}, y: {self.RL_target_vel.linear.y}, z: {self.RL_target_vel.linear.z}")
+
+        # Mission 10(RL Landing with Aruco)
+        if self.cmd_state == 10:
             self.landing_velocity_pub.publish(self.RL_target_vel)
             rospy.loginfo(f"Velocity - x: {self.RL_target_vel.linear.x}, y: {self.RL_target_vel.linear.y}, z: {self.RL_target_vel.linear.z}")
 
