@@ -97,7 +97,7 @@ class PathClass(object):
             #rospy.loginfo(f"Waypoint 3 - x: {self.destination_3_pose.point.x}, y: {self.destination_3_pose.point.y}, z: {self.destination_z}")
             #=============================================================================================================
 
-            if self.destination_cnt < len(self.destination_cmd):
+            if self.destination_cnt < len(self.destination_positions):
                 self.destination_cmd.pose.position.x, self.destination_cmd.pose.position.y, self.destination_cmd.pose.position.z = self.destination_positions[self.destination_cnt]
                 self.destination_cmd_pub.publish(self.destination_cmd)
             else:

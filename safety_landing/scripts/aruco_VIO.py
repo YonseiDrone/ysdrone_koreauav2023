@@ -55,7 +55,7 @@ def to_euler_angles(x, y, z, w):
 
 
 class KalmanFilter(object):
-    def __init__(self, dt, u_x, u_y, u_z, std_acc, x_std_meas, y_std_meas, z_std_meas):
+    def __init__(self, dt, u_x, u_y, std_acc, x_std_meas, y_std_meas):
         """
         dt : sampling time(time for 1 cycle)
         u_x : acceleration in x-direction
@@ -68,35 +68,35 @@ class KalmanFilter(object):
         self.dt = dt
 
         # Define the control input variable
-        self.u = np.matrix([[u_x], [u_y]])
+        self.u = np.array([[u_x], [u_y]])
 
         # Initialize the state(x,y,z,x',y',z')
-        self.x = np.matrix([[0], [0], [0], [0]])
+        self.x = np.array([[0], [0], [0], [0]])
 
         # Define the State Transition Matrix A
-        self.A = np.matrix([[1, 0, self.dt, 0],
+        self.A = np.array([[1, 0, self.dt, 0],
                             [0, 1, 0, self.dt],
                             [0, 0, 1, 0],
                             [0, 0, 0, 1]])
         # Define the Control Input Matrix B
-        self.B = np.matrix([[(self.dt**2)/2, 0],
+        self.B = np.array([[(self.dt**2)/2, 0],
                             [0, (self.dt**2)/2],
                             [self.dt, 0],
                             [0, self.dt]])
         # Define the Measurement Mapping Matrix
         # Assume that we are only measuring the position but not the velocity
-        self.H = np.matrix([[1, 0, 0, 0],
+        self.H = np.array([[1, 0, 0, 0],
                             [0, 1, 0, 0]])
         # Initialize the Process Noise Covariance
-        self.Q = np.matrix([[(self.dt**4)/4, 0, (self.dt**3)/2, 0],
+        self.Q = np.array([[(self.dt**4)/4, 0, (self.dt**3)/2, 0],
                             [0, (self.dt**4)/4, 0, (self.dt**3)/2],
                             [(self.dt**3)/2, 0, self.dt**2, 0],
                             [0, (self.dt**3)/2, 0, self.dt**2]]) * (std_acc**2)
         # Initialize the Measurement Noise Covariance
-        self.R = np.matrix([[x_std_meas, 0],
-                            [0, y_std_meas]])
+        self.R = np.array([[x_std_meas**2, 0],
+                            [0, y_std_meas**2]])
         # Initialize the Covariance Matrix
-        # identity matrix whose shape is the same as the shape of the matrix A
+        # identity array whose shape is the same as the shape of the matrix A
         self.P = np.eye(self.A.shape[1])
 
     def predict(self):
@@ -107,7 +107,8 @@ class KalmanFilter(object):
         # calculate the error covariance
         # P = A*P*A^T + Q
         self.P = np.dot(np.dot(self.A, self.P), self.A.T) + self.Q
-        return self.x[0:2] # return x,y,z
+        rospy.loginfo(f"{self.x}")
+        return self.x[0:2] # return x,y
     
     def update(self, z):
         # S = H*P*H^T + R
@@ -121,7 +122,7 @@ class KalmanFilter(object):
         I = np.eye(self.H.shape[1])
 
         # update error covariance matrix
-        self.P = (I - (K*self.H)) * self.P
+        self.P = (I - (K@self.H)) @ self.P
         return self.x[0:2]
 
 
@@ -135,8 +136,8 @@ class ImageToDistance:
         self.current_pose = PoseStamped()
         self.bridge = CvBridge()
         self.imu_data = Imu()
-        # Create KalmanFilter object as KF
-        self.KF = KalmanFilter(0.1, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001, 0.001)
+        # KalmanFilter(dt, u_x, u_y, std_acc, x_std_meas, y_std_meas)
+        self.KF = KalmanFilter(0.1, 1, 1, 1, 0.1, 0.1)
 
         #Publisher
         self.image_pub = rospy.Publisher("/cv_image", Image, queue_size= 1)
@@ -213,9 +214,26 @@ class ImageToDistance:
             y_center_px = y_sum*.25
             #rospy.loginfo(f"pixel x: {x_center_px}, y: {y_center_px}")
 
+            center = [[x_center_px], [y_center_px]]
+            rospy.loginfo(f"pixel x: {x_center_px}, y: {y_center_px}")
+            
+            # Predict
+            (x_predict, y_predict) = self.KF.predict()
+            rospy.loginfo(f"predict x: {x_predict}, y: {y_predict}")
+            cv2.rectangle(cv_image, (int(x_predict-30), int(y_predict-30)), (int(x_predict+30), int(y_predict+30)), (255,0,0), 2)
+
+            # Update
+            (x_update, y_update) = self.KF.update(center)
+            cv2.rectangle(cv_image, (int(x_update-30), int(y_update-30)), (int(x_update+30), int(y_update+30)), (0,0,255), 2)
+
+            cv2.putText(cv_image, "Estimated Position", (int(x_update + 30), int(y_update + 10)), 0, 0.5, (0, 0, 255), 2)
+            cv2.putText(cv_image, "Predicted Position", (int(x_predict + 30), int(y_predict)), 0, 0.5, (255, 0, 0), 2)
+            cv2.putText(cv_image, "Measured Position", (int(x_center_px + 30), int(y_center_px - 30)), 0, 0.5, (0,191,255), 2)
+
+
             #=========================Camera coordinate============================
             # Initialize camera_coord in pixels
-            camera_coord = np.array([[x_center_px], [y_center_px], [1]])
+            camera_coord = np.array([[x_update[0]], [y_update[0]], [1]])
             # Perform matrix inversion and multiplication
             camera_coord = np.linalg.inv(self.cameraMatrix).dot(camera_coord)
             # Multiply with z_world to get the coordinates in units of z_world
@@ -243,9 +261,9 @@ class ImageToDistance:
         	# Node publish - cv_image
         cv_image = cv2.cvtColor(cv_image, cv2.COLOR_BGR2RGB)
         self.image_pub.publish(self.bridge.cv2_to_imgmsg(cv_image, "rgb8"))
-        #cv_image = cv2.cvtColor(cv_image, cv2.COLOR_BGR2RGB)
-        #cv2.imshow("cv_image", cv_image)
-        #cv2.waitKey(5)
+        cv_image = cv2.cvtColor(cv_image, cv2.COLOR_BGR2RGB)
+        cv2.imshow("cv_image", cv_image)
+        cv2.waitKey(5)
 
 if __name__ == "__main__":
     rospy.init_node('aruco_VIO', anonymous=True)

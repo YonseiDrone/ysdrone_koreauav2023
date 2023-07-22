@@ -10,7 +10,7 @@ BuildingSearch::BuildingSearch(const ros::NodeHandle& nh_private) : nh_(nh_priva
 
     nh_.param("/destination_3_pose_x", last_goal_x, 0.0);
     nh_.param("/destination_3_pose_y", last_goal_y, 0.0);
-    nh_.param("/destination_z", last_goal_z, 3.0);
+    nh_.param("/destination_z", last_goal_z, 2.5);
     ROS_INFO("[Building Search] Initialized");
     ROS_INFO("Last Goal %f, %f, %f", last_goal_x, last_goal_y, last_goal_z);
 
@@ -74,6 +74,7 @@ void BuildingSearch::command(const ros::TimerEvent& event)
                 ROS_INFO("Goal x: %f, y: %f, z: %f", marker_array.markers[0].pose.position.x, marker_array.markers[0].pose.position.y, marker_array.markers[0].pose.position.z);
                 move_to_target(marker_array.markers[0].pose.position.x, marker_array.markers[0].pose.position.y, marker_array.markers[0].pose.position.z);
                 ROS_INFO("[Building Search] Done");
+                searching_status += 1;
             }
         }
     }
@@ -187,7 +188,7 @@ void BuildingSearch::cloud_cb(const sensor_msgs::PointCloud2ConstPtr& input)
             /* Make goal_pos to the center of the centroid of clustered object and last goal position */
             goal_pos.pose.position.x = (centroid[0] + last_goal_x) / 2;
             goal_pos.pose.position.y = (centroid[1] + last_goal_y) / 2;
-            goal_pos.pose.position.z = centroid[2];
+            goal_pos.pose.position.z = (centroid[2] > last_goal_z) ? last_goal_z : centroid[2];
             goal_pos.scale.x = max_pt.x - min_pt.x;
             goal_pos.scale.y = max_pt.y - min_pt.y;
             goal_pos.scale.z = max_pt.z - min_pt.z;

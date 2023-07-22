@@ -76,6 +76,7 @@ if __name__ == "__main__":
         setmode_node_handler.check_FCU_connection()
         setmode_node_handler.setArm()
         setmode_node_handler.setMode("OFFBOARD")
+        rospy.loginfo("Ready to go")
         rospy.spin()
     except rospy.ROSInterruptException as exception:
         pass

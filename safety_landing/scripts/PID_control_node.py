@@ -109,8 +109,8 @@ class PIDControl:
         vy = self.pid_y.compute(err_y)
 
         self.desired_landing.yaw = self.yaw
-        self.desired_landing.velocity.x = -vx*0.5
-        self.desired_landing.velocity.y = -vy*0.5
+        self.desired_landing.velocity.x = -vx*0.3
+        self.desired_landing.velocity.y = -vy*0.3
         self.desired_landing.velocity.z = -0.3
 
         self.desired_landing_pub.publish(self.desired_landing)

@@ -173,6 +173,9 @@ class ControlClass(object):
         elif self.cmd_state == 7:
             self.resp.mode = 'Position Control Mode'
             self.resp.res = True
+        elif self.cmd_state == 8:
+            self.resp.mode = 'Position Landing'
+            self.resp.res = True
         rospy.loginfo(f'Received request : {req.command} && Current Mode : {self.resp.mode} && Enable :{self.resp.res}')
         return self.resp
     
@@ -193,7 +196,19 @@ class ControlClass(object):
         
         # Mission 3(Cross Detection Mode)
         if self.cmd_state == 3:
-            pass
+            self.mission_num.data = self.cmd_state
+            self.mission_pub.publish(self.mission_num)
+            self.target_pose.pose.position.x = rospy.get_param('/destination_3_pose_x') - 4.0
+            self.target_pose.pose.position.y = rospy.get_param('/destination_3_pose_y')
+            self.target_pose.pose.position.z = rospy.get_param('/destination_z')
+            qx, qy, qz, qw = to_quaternion(180*math.pi/180, 0, 0)
+            self.target_pose.pose.orientation.x = qx
+            self.target_pose.pose.orientation.y = qy
+            self.target_pose.pose.orientation.z = qz
+            self.target_pose.pose.orientation.w = qw
+            self.target_pose_pub.publish(self.target_pose) 
+            rospy.loginfo(f"Mission published to [Cross Detection] data: {self.mission_num.data}")
+
 
         # Mission 4(Cargo Launching Mode)
         if self.cmd_state == 4:
@@ -214,9 +229,12 @@ class ControlClass(object):
         if self.cmd_state == 7:
             self.target_pose.pose.position.x = 0
             self.target_pose.pose.position.y = 0
-            self.target_pose.pose.position.z = 3.0
+            self.target_pose.pose.position.z = 4.0
             self.target_pose_pub.publish(self.target_pose)
-
+        if self.cmd_state == 8:
+            self.target_pose.pose.position.x = 0
+            self.target_pose.pose.position.y = 0
+            self.target_pose.pose.position.z = self.current_pose.pose.position.z - 0.2
 
 
 
