@@ -10,7 +10,7 @@ Offboard 모드에서 드론을 제어하기 위한 패키지로 Service를 통�
 
   - [waypoint_server.launch](offboard/launch/waypoint_server.launch): 주어진 GPS값을 LOCAL_ENU 기준 좌표계로 변환해주고 `path_node`를 통해 기체가 해당 좌표점에 도달하였을 때 다음 경로점으로 목표점을 publish해준다. 플래너로 PX4-Avoidance를 사용하므로 `input/goal_position` 토픽의 메세지인 `MarkerArray`타입으로 발행한다.
 
-  > [!NOTE]\
+  > [!IMPORTANT]\
   > 이 런치파일을 구동하였을 때는 경로점이 맞게 생성되었는지 반드시 확인해야 한다.
   > `path_node`에서 ros param으로 설정해주는 `destination_1_pose_x`, `destination_1_pose_y` ~ `destination_3_pose_x`, `destination_3_pose_y`와 `destination_z` 을 `rosparam get`으로 비행 전 체크해주어야 한다.
 
