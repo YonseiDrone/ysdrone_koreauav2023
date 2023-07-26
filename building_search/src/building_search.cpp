@@ -15,11 +15,14 @@ BuildingSearch::BuildingSearch(const ros::NodeHandle& nh_private) : nh_(nh_priva
     ROS_INFO("Last Goal %f, %f, %f", last_goal_x, last_goal_y, last_goal_z);
 
     // ROS Publisher & Subscriber
-	cloud_sub = nh_.subscribe<sensor_msgs::PointCloud2>("/local_pointcloud", 1, boost::bind(&BuildingSearch::cloud_cb, this, _1));
+	cloud_sub = nh_.subscribe<sensor_msgs::PointCloud2>("/local_pointcloud", 10, boost::bind(&BuildingSearch::cloud_cb, this, _1));
 	pos_sub = nh_.subscribe<geometry_msgs::PoseStamped>("/mavros/local_position/pose", 10, boost::bind(&BuildingSearch::pose_cb, this, _1));
 
 	goal_pos_pub = nh_.advertise<visualization_msgs::MarkerArray>("/input/goal_position", 1);
 	goal_yaw_pub = nh_.advertise<geometry_msgs::PoseStamped>("/mavros/setpoint_position/local", 10);
+    colored_cloud_pub = nh_.advertise<sensor_msgs::PointCloud2>("/clusters", 1);
+    centroid_marker_pub = nh_.advertise<visualization_msgs::Marker>("/centroid_marker", 1);
+
     // ROS service for DroneCommand
     // client = nh_.serviceClient<ysdrone_msgs::DroneCommand>("drone_command");
     // server = nh_.advertiseService("drone_command", &BuildingSearch::srv_cb, this);
@@ -38,7 +41,7 @@ void BuildingSearch::command(const ros::TimerEvent& event)
 {
     if(last_goal_reached)
     {
-	ROS_INFO("Last goal reached! srv_mode: %d, mission: %f", srv_mode, mission);
+	    ROS_INFO("Last goal reached! srv_mode: %d, mission: %d", srv_mode, mission);
         // Auto Mode    or
         // Service Mode => Is request.command same as buidling search mission number?
         if(!srv_mode || mission == building_search_mission)
@@ -141,6 +144,8 @@ void BuildingSearch::cloud_cb(const sensor_msgs::PointCloud2ConstPtr& input)
 {
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>);
     pcl::fromROSMsg(*input, *cloud);
+    pcl::PointCloud<pcl::PointXYZRGB>::Ptr colored_cloud(new pcl::PointCloud<pcl::PointXYZRGB>);
+    colored_cloud->header = cloud->header;
     // ROS_INFO_STREAM(" Cloud inputs: #" << cloud->size() << " Points");
 
     if(cloud->size() > 0)
@@ -151,7 +156,7 @@ void BuildingSearch::cloud_cb(const sensor_msgs::PointCloud2ConstPtr& input)
         std::vector<pcl::PointIndices> cluster_indices;
         pcl::EuclideanClusterExtraction<pcl::PointXYZ> ec;
         ec.setClusterTolerance(4.0); // 2m
-        ec.setMinClusterSize(10);
+        ec.setMinClusterSize(30);
         ec.setMaxClusterSize(250);
         ec.setSearchMethod(tree);
         ec.setInputCloud(cloud);
@@ -162,13 +167,30 @@ void BuildingSearch::cloud_cb(const sensor_msgs::PointCloud2ConstPtr& input)
         for(std::vector<pcl::PointIndices>::const_iterator it = cluster_indices.begin(); it != cluster_indices.end(); ++it)
         {
             pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_cluster(new pcl::PointCloud<pcl::PointXYZ>);
+
+            uint8_t r = rand() % 256;
+            uint8_t g = rand() % 256;
+            uint8_t b = rand() % 256;
+
             for(std::vector<int>::const_iterator pit = it->indices.begin(); pit != it->indices.end(); ++pit)
+            {
                 cloud_cluster->points.push_back(cloud->points[*pit]); //*
+
+                pcl::PointXYZRGB colored_point;
+                colored_point.x = cloud->points[*pit].x;
+                colored_point.y = cloud->points[*pit].y;
+                colored_point.z = cloud->points[*pit].z;
+                uint32_t rgb = (static_cast<uint32_t>(r) << 16 | static_cast<uint32_t>(g) << 8 | static_cast<uint32_t>(b));
+                colored_point.rgb = *reinterpret_cast<float*>(&rgb);
+                colored_cloud->points.push_back(colored_point);
+            }
             cloud_cluster->width = cloud_cluster->points.size();
             cloud_cluster->height = 1;
             cloud_cluster->is_dense = true;
 
             // ROS_INFO_STREAM("Cluster " << (it - cluster_indices.begin()) << ": " << cloud_cluster->points.size() << " points");
+            pcl::toROSMsg(*colored_cloud, colored_cloud_msg);
+            colored_cloud_pub.publish(colored_cloud_msg);
 
             Eigen::Vector4f centroid;
             pcl::compute3DCentroid(*cloud_cluster, centroid);
@@ -196,7 +218,30 @@ void BuildingSearch::cloud_cb(const sensor_msgs::PointCloud2ConstPtr& input)
             goal_pos.color.g = 0.0;
             goal_pos.color.b = 0.0;
             goal_pos.color.a = 1.0;
-            goal_pos.lifetime = ros::Duration(0.2);            
+            goal_pos.lifetime = ros::Duration(0.2);
+
+            centroid_marker.header.frame_id = input->header.frame_id;
+            centroid_marker.header.stamp = ros::Time::now();     
+            centroid_marker.ns = "centroid_marker";
+            centroid_marker.id = it - cluster_indices.begin();
+            centroid_marker.type = visualization_msgs::Marker::SPHERE;
+            centroid_marker.action = visualization_msgs::Marker::ADD;
+            centroid_marker.pose.position.x = centroid[0];
+            centroid_marker.pose.position.y = centroid[1];
+            centroid_marker.pose.position.z = centroid[2];
+            centroid_marker.pose.orientation.x = 0.0;
+            centroid_marker.pose.orientation.y = 0.0;
+            centroid_marker.pose.orientation.z = 0.0;
+            centroid_marker.pose.orientation.w = 1.0;
+            centroid_marker.scale.x = 0.1;
+            centroid_marker.scale.y = 0.1;
+            centroid_marker.scale.z = 0.1;
+            centroid_marker.color.r = 1.0;
+            centroid_marker.color.g = 1.0;
+            centroid_marker.color.b = 0.0;
+            centroid_marker.color.a = 1.0;
+
+            centroid_marker_pub.publish(centroid_marker);
 
             marker_array.markers.clear();
             marker_array.markers.push_back(goal_pos);
@@ -266,13 +311,18 @@ void BuildingSearch::move_to_target(double x, double y, double z)
     current_target_position.pose.position.x - current_pose.pose.position.x);
 
 	// http://wiki.ros.org/tf2/Tutorials/Quaternions
-	tf2::Quaternion q;
-	q.setRPY(0.0, 0.0, target_yaw);
+	// tf2::Quaternion q;
+	// q.setRPY(0.0, 0.0, target_yaw);
 
-	geometry_msgs::Quaternion q_msg;
-	tf2::convert(q, q_msg);
+	// geometry_msgs::Quaternion q_msg;
+	// tf2::convert(q, q_msg);
+    tf::Quaternion quaternion = tf::createQuaternionFromYaw(target_yaw);
 
-	current_target_position.pose.orientation = q_msg;
+	// current_target_position.pose.orientation = q_msg;
+	current_target_position.pose.orientation.x = quaternion.x();
+	current_target_position.pose.orientation.y = quaternion.y();
+	current_target_position.pose.orientation.z = quaternion.z();
+	current_target_position.pose.orientation.w = quaternion.w();
 
     while((distance(current_target_position, current_pose) > 0.5) && (orientationGap(current_target_position, current_pose)) > 0.5)
     {

@@ -1,22 +1,9 @@
 #!/usr/bin/env python
 import rospy
 from mavros_msgs.srv import CommandLong
-from mavros_msgs.msg import OverrideRCIn, ActuatorControl
+from mavros_msgs.msg import OverrideRCIn
+		
 
-def servo_control():
-	servo_con_pub = rospy.Publisher('/mavros/actuator_control', ActuatorControl, queue_size=10)
-
-	msg = ActuatorControl()
-	msg.group_mix = 2 # PX4_MIX_PAYLOAD
-	msg.controls = [2000, 2000, 2000, 2000, 2000, 2000, 2000, 2000]
-
-	servo_con_pub.publish(msg)
-	rospy.loginfo("Actuator control published")
-
-def mav_cmd_187():
-	
-	try:
-		servo_control_srv = rospy.ServiceProxy('/mavros/cmd/command', CommandLong)
 ### https://mavlink.io/en/messages/common.html  
  
 # MAV_CMD_DO_SET_SERVO (183 )
@@ -43,9 +30,30 @@ def mav_cmd_187():
 # 6: Actuator 6		Actuator 6 value, scaled from [-1 to 1]. NaN to ignore.					min: -1 max:1
 # 7: Index			Index of actuator set (i.e if set to 1, Actuator 1 becomes Actuator 7)	min:0 increment:1
 
+# MAV_CMD_DO_GRIPPER (211 )
+# Mission command to operate a gripper.
+
+# Param (:Label)	Description	Values
+# 1: Instance	Gripper instance number.	min:1 increment:1
+# 2: Action	Gripper action to perform.	GRIPPER_ACTIONS
+# 3	Empty	
+# 4	Empty	
+# 5	Empty	
+# 6	Empty	
+# 7	Empty	
+
 ###
-		resp = servo_control_srv(False, 183, 94, 2, 1500, 0, 0, 0, 0, 0)
+
+def mav_srv_cmd():
 	
+	try:
+		servo_control_srv = rospy.ServiceProxy('/mavros/cmd/command', CommandLong)
+		msg = CommandLong()
+		msg.command = 211 # MAV_CMD_DO_GRIPPER
+		msg.param2 = 1
+		# QGC에서 Gripper로 설정해놓은 Servo PIN에 Action을 준다.(true)
+  
+		resp = servo_control_srv(msg)
 		if resp.success:
 			print("Servo controlled successfully")
 		else:
@@ -53,26 +61,10 @@ def mav_cmd_187():
 
 	except rospy.ServiceException as e:
 		print("Service call failed: %s" % e)
-  
-def set_pwm():
-    pub = rospy.Publisher('/mavros/rc/override', OverrideRCIn, queue_size=10)
 
-    # Give the node a moment to initialize and create the publisher
-    rospy.sleep(1)
-
-    msg = OverrideRCIn()
-    msg.channels[0] = 2000  # set servo at channel 1 to mid-point
-    # keep the other channels at 0
-    for i in range(1, 8):
-        msg.channels[i] = 2000
-
-    pub.publish(msg)
-    rospy.loginfo("Published PWM values to /mavros/rc/override") 
 
 if __name__ == "__main__":
 	rospy.init_node('cargo_launch', anonymous=True)
 	rospy.wait_for_service('/mavros/cmd/command')
-	# mav_cmd_187()
-	# set_pwm()
-	servo_control()
+	mav_srv_cmd()
 	rospy.loginfo("Done")
