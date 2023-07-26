@@ -6,6 +6,7 @@ from sensor_msgs.msg import Image
 from std_msgs.msg import Float32
 from cv_bridge import CvBridge, CvBridgeError
 from ysdrone_msgs.srv import *
+import time
 
 
 class MarkerDetection(object):
@@ -24,6 +25,7 @@ class MarkerDetection(object):
         # Publisher
         self.image_pub = rospy.Publisher('/cross_image', Image, queue_size=10)
 
+
     def mission_cb(self, msg):
         self.mission = msg.data
 
@@ -32,23 +34,32 @@ class MarkerDetection(object):
 
         try:
             # ROS 이미지 메시지를 OpenCV 이미지로 변환합니다.
-            frame = bridge.imgmsg_to_cv2(image_msg, desired_encoding="rgb8")
-            xyxy = None # Initialize xyz with None
             if self.mission == 3:
+                #fps
+                timer = time.time()
+
+                frame = bridge.imgmsg_to_cv2(image_msg, desired_encoding="rgb8")
+                xyxy = None # Initialize xyz with None
                 results = self.model(frame)
 
                 for volume in results.xyxy[0]:
                     xyxy = volume.numpy()
                     cv2.rectangle(frame, (int(xyxy[0]), int(xyxy[1])), (int(xyxy[2]), int(xyxy[3])), color=(0, 255, 0), thickness=2)
                     cv2.putText(frame, f'{xyxy[4]:.3f}', (int(xyxy[0]), int(xyxy[1])), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(0, 255, 0), thickness=2)
+                    
+                    #fps
+                    dt = time.time() - timer
+                    fps = 1 / dt
+                    cv2.putText(frame, f'FPS:{fps:.2f}-{dt*1000:.0f}ms', (0, 100), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(255, 0, 0), thickness=3)
                 #rospy.loginfo(f"image coordinate: {(int(xyxy[0]) + int(xyxy[2]))/2, (int(xyxy[1]) + int(xyxy[3]))/2}")
             try:
                 self.image_pub.publish(bridge.cv2_to_imgmsg(frame, "rgb8"))
             except CvBridgeError as e:
                 print(e)
-
-            # cv2.imshow("Received Image", frame)
-            # cv2.waitKey(1)
+            
+            cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            cv2.imshow("Received Image", frame)
+            cv2.waitKey(1)
 
         except CvBridgeError as e:
             rospy.logerr(e)

@@ -136,8 +136,8 @@ if __name__ == "__main__":
         while not rospy.is_shutdown() and not path_node_handler.current_state.connected:
             rate.sleep()
         rospy.loginfo("Path node : FCU connected")
-        rospy.logwarn(f"Check Z value! {path_node_handler.destination_z}")
-        rospy.logwarn(f"Check Z value! {path_node_handler.destination_z}")
+        # rospy.logwarn(f"Check Z value! {path_node_handler.destination_z}")
+        # rospy.logwarn(f"Check Z value! {path_node_handler.destination_z}")
 
         rospy.Timer(rospy.Duration(0.05), path_node_handler.destination_publisher)
 

@@ -1,8 +1,18 @@
 #!/usr/bin/env python
 import rospy
 from mavros_msgs.srv import CommandLong
-from mavros_msgs.msg import OverrideRCIn
-		
+from mavros_msgs.msg import OverrideRCIn, ActuatorControl
+
+def servo_control():
+	servo_con_pub = rospy.Publisher('/mavros/actuator_control', ActuatorControl, queue_size=10)
+
+	msg = ActuatorControl()
+	msg.group_mix = 2 # PX4_MIX_PAYLOAD
+	msg.controls = [2000, 2000, 2000, 2000, 2000, 2000, 2000, 2000]
+
+	servo_con_pub.publish(msg)
+	rospy.loginfo("Actuator control published")
+
 def mav_cmd_187():
 	
 	try:
@@ -34,7 +44,7 @@ def mav_cmd_187():
 # 7: Index			Index of actuator set (i.e if set to 1, Actuator 1 becomes Actuator 7)	min:0 increment:1
 
 ###
-		resp = servo_control_srv(False, 183, 94, 1, 1500, 0, 0, 0, 0, 0)
+		resp = servo_control_srv(False, 183, 94, 2, 1500, 0, 0, 0, 0, 0)
 	
 		if resp.success:
 			print("Servo controlled successfully")
@@ -62,6 +72,7 @@ def set_pwm():
 if __name__ == "__main__":
 	rospy.init_node('cargo_launch', anonymous=True)
 	rospy.wait_for_service('/mavros/cmd/command')
-	mav_cmd_187()
-	set_pwm()
+	# mav_cmd_187()
+	# set_pwm()
+	servo_control()
 	rospy.loginfo("Done")

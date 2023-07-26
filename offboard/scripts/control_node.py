@@ -209,7 +209,7 @@ class ControlClass(object):
         if self.cmd_state == 3:
             self.mission_num.data = self.cmd_state
             self.mission_pub.publish(self.mission_num)
-            self.target_pose.pose.position.x = rospy.get_param('/destination_3_pose_x') - 4.0
+            self.target_pose.pose.position.x = rospy.get_param('/destination_3_pose_x') - 1.0
             self.target_pose.pose.position.y = rospy.get_param('/destination_3_pose_y')
             self.target_pose.pose.position.z = rospy.get_param('/destination_z')
             qx, qy, qz, qw = to_quaternion(180*math.pi/180, 0, 0)
@@ -248,6 +248,7 @@ class ControlClass(object):
             self.target_pose.pose.position.x = 0
             self.target_pose.pose.position.y = 0
             self.target_pose.pose.position.z = self.current_pose.pose.position.z - 0.2
+            self.target_pose_pub.publish(self.target_pose)
 
         # Mission 9(RL Landing with GPS)
         if self.cmd_state == 9:
@@ -256,6 +257,12 @@ class ControlClass(object):
 
         # Mission 10(RL Landing with Aruco)
         if self.cmd_state == 10:
+            qx, qy, qz, qw = to_quaternion(90*math.pi/180, 0, 0)
+            self.target_pose.pose.orientation.x = qx
+            self.target_pose.pose.orientation.y = qy
+            self.target_pose.pose.orientation.z = qz
+            self.target_pose.pose.orientation.w = qw
+            self.target_pose_pub.publish(self.target_pose) 
             self.landing_velocity_pub.publish(self.RL_target_vel)
             rospy.loginfo(f"Velocity - x: {self.RL_target_vel.linear.x}, y: {self.RL_target_vel.linear.y}, z: {self.RL_target_vel.linear.z}")
 

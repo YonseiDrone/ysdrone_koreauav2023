@@ -14,7 +14,7 @@ from sensor_msgs.msg import Image, Imu
 from std_msgs.msg import Float32MultiArray
 from cv_bridge import CvBridge, CvBridgeError
 from mavros_msgs.msg import State
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PoseStamped, Point
 import math
 
 
@@ -136,13 +136,20 @@ class ImageToDistance:
         self.current_pose = PoseStamped()
         self.bridge = CvBridge()
         self.imu_data = Imu()
+        self.measured_xy = Point()
+        self.predicted_xy = Point()
+        self.filtered_xy = Point()
         # KalmanFilter(dt, u_x, u_y, std_acc, x_std_meas, y_std_meas)
         self.KF = KalmanFilter(0.1, 1, 1, 1, 0.1, 0.1)
 
         #Publisher
         self.image_pub = rospy.Publisher("/cv_image", Image, queue_size= 1)
         self.distance_pub = rospy.Publisher("/relative_distance", Float32MultiArray, queue_size=1)
+        self.measured_xy_pub = rospy.Publisher("/measured_xy", Point, queue_size=1)
+        self.predicted_xy_pub = rospy.Publisher("/filtered_xy", Point, queue_size=1)
+        self.filtered_xy_pub = rospy.Publisher("/filtered_xy", Point, queue_size=1)
 
+        # Subscriber
         self.state_sub = rospy.Subscriber("/mavros/state", State, self.state_cb)
         self.pose_sub = rospy.Subscriber("/mavros/local_position/pose", PoseStamped, self.pose_cb)
         self.imu_sub = rospy.Subscriber("/mavros/imu/data", Imu, self.imu_cb)
@@ -212,6 +219,9 @@ class ImageToDistance:
                 
             x_center_px = x_sum*.25
             y_center_px = y_sum*.25
+            self.measured_xy.x = x_center_px
+            self.measured_xy.y = y_center_px
+            self.measured_xy_pub.publish(self.measured_xy)
             #rospy.loginfo(f"pixel x: {x_center_px}, y: {y_center_px}")
 
             center = [[x_center_px], [y_center_px]]
@@ -219,11 +229,17 @@ class ImageToDistance:
             
             # Predict
             (x_predict, y_predict) = self.KF.predict()
+            self.predicted_xy.x = x_predict[0]
+            self.predicted_xy.y = y_predict[0]
+            self.predicted_xy_pub.publish(self.predicted_xy)
             rospy.loginfo(f"predict x: {x_predict}, y: {y_predict}")
             cv2.rectangle(cv_image, (int(x_predict-30), int(y_predict-30)), (int(x_predict+30), int(y_predict+30)), (255,0,0), 2)
 
             # Update
             (x_update, y_update) = self.KF.update(center)
+            self.filtered_xy.x = x_update[0]
+            self.filtered_xy.y = y_update[0]
+            self.filtered_xy_pub.publish(self.filtered_xy)
             cv2.rectangle(cv_image, (int(x_update-30), int(y_update-30)), (int(x_update+30), int(y_update+30)), (0,0,255), 2)
 
             cv2.putText(cv_image, "Estimated Position", (int(x_update + 30), int(y_update + 10)), 0, 0.5, (0, 0, 255), 2)
@@ -272,9 +288,9 @@ if __name__ == "__main__":
         vision_kalman_filter_node_handler = ImageToDistance()
 
         rate = rospy.Rate(100)
-        # wait for FCU connection
-        #while not rospy.is_shutdown() and not vision_kalman_filter_node_handler.current_state.connected:
-        #rate.sleep()
+        #wait for FCU connection
+        while not rospy.is_shutdown() and not vision_kalman_filter_node_handler.current_state.connected:
+            rate.sleep()
         rospy.loginfo("aruco VIO node : FCU connected")
         rospy.Timer(rospy.Duration(0.1), vision_kalman_filter_node_handler.image_to_distance_cb)
 

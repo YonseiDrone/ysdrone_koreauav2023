@@ -60,10 +60,10 @@ class RLControl:
     def get_state(self):
         state = []
         state.append(self.current_vel.twist.linear.y)
-        state.append(self.current_vel.twist.linear.z + self.z_offset)
+        state.append(self.current_vel.twist.linear.z)
         state.append(self.current_vel.twist.linear.x)
         state.append(self.current_pose.pose.position.x)
-        state.append(self.current_pose.pose.position.z)
+        state.append(self.current_pose.pose.position.z + self.z_offset)
         state.append(self.current_pose.pose.position.y)
         return state
 

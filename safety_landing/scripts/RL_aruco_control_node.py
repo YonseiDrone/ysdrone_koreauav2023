@@ -59,12 +59,13 @@ class RLControl:
 
     def get_state(self):
         state = []
-        state.append(self.current_vel.twist.linear.y)
-        state.append(self.current_vel.twist.linear.z + self.z_offset)
-        state.append(self.current_vel.twist.linear.x)
-        state.append(self.relative_dis.data[0])
-        state.append(self.relative_dis.data[2])
-        state.append(self.relative_dis.data[1])
+        if len(self.relative_dis.data) >= 3:
+            state.append(self.current_vel.twist.linear.y)
+            state.append(self.current_vel.twist.linear.z)
+            state.append(self.current_vel.twist.linear.x)
+            state.append(self.relative_dis.data[0])
+            state.append(self.relative_dis.data[2]+ self.z_offset)
+            state.append(self.relative_dis.data[1])
         return state
 
     def action(self, e):
