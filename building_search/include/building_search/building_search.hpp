@@ -62,7 +62,7 @@ private:
 // publisher & subscriber
 	ros::NodeHandle nh_;
 	ros::Rate rate;
-	ros::Publisher goal_pos_pub, goal_yaw_pub;
+	ros::Publisher goal_pos_pub, goal_yaw_pub, colored_cloud_pub, centroid_marker_pub;
 	ros::Subscriber cloud_sub, pos_sub, mission_sub;
 // services
 	ros::ServiceClient client;
@@ -71,7 +71,8 @@ private:
 	geometry_msgs::PoseStamped current_pose;
 	visualization_msgs::MarkerArray marker_array;
 	geometry_msgs::PoseStamped current_target_position;
-	visualization_msgs::Marker goal_pos;
+	visualization_msgs::Marker goal_pos, centroid_marker;
+	sensor_msgs::PointCloud2 colored_cloud_msg;
 	// ysdrone_msgs::DroneCommand srv;
 	int mission = -1;
 	int searching_status;
