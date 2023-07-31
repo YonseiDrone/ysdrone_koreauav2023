@@ -196,6 +196,7 @@ class ControlClass(object):
         # Mission 1(Obstacle Avoidance Planner)
         if self.cmd_state == 1:
             self.avoidance_pos_pub.publish(self.destination_command_marker_array)
+            rospy.loginfo(f"{self.destination_command_marker_array}")
             rospy.loginfo(f'Target Waypoint - x :{self.destination_command_marker.pose.position.x}, y :{self.destination_command_marker.pose.position.y}, z :{self.destination_command_marker.pose.position.z}')
 
         # Mission 2(Building Searching)
@@ -211,7 +212,7 @@ class ControlClass(object):
             self.mission_pub.publish(self.mission_num)
             self.target_pose.pose.position.x = rospy.get_param('/destination_3_pose_x') - 1.0
             self.target_pose.pose.position.y = rospy.get_param('/destination_3_pose_y')
-            self.target_pose.pose.position.z = rospy.get_param('/destination_z')
+            self.target_pose.pose.position.z = rospy.get_param('/destination_z') + 1.5
             qx, qy, qz, qw = to_quaternion(180*math.pi/180, 0, 0)
             self.target_pose.pose.orientation.x = qx
             self.target_pose.pose.orientation.y = qy
@@ -238,15 +239,15 @@ class ControlClass(object):
         
         # Mission 7(Position Control)
         if self.cmd_state == 7:
-            self.target_pose.pose.position.x = 0
-            self.target_pose.pose.position.y = 0
+            self.target_pose.pose.position.x = 0.0
+            self.target_pose.pose.position.y = 0.0
             self.target_pose.pose.position.z = 4.0
             self.target_pose_pub.publish(self.target_pose)
 
         # Mission 8(Position Landing)    
         if self.cmd_state == 8:
-            self.target_pose.pose.position.x = 0
-            self.target_pose.pose.position.y = 0
+            self.target_pose.pose.position.x = 0.0
+            self.target_pose.pose.position.y = 0.0
             self.target_pose.pose.position.z = self.current_pose.pose.position.z - 0.2
             self.target_pose_pub.publish(self.target_pose)
 

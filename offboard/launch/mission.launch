@@ -5,13 +5,12 @@
 	<node pkg="offboard" type="setmode_node.py" name="setmode_node" required="true" output="screen"/>
 
 	<node pkg="building_search" type="building_search_node" name="building_search_node" required="true" output="screen"/>
-
 	<node pkg="yolo_cross_detection" type="yolo_node.py" name="yolo_node" output="screen" />
 
 	<!-- <node pkg="safety_landing" type="aruco_VIO.py" name="aruco_VIO" output="screen" /> 
 
 	<node pkg="safety_landing" type="PID_control_node.py" name="PID_control_node" output="screen" /> 
-
-        <node pkg="safety_landing" type="RL_control_node.py" name="RL_control_node" output="screen"/>
 -->
+    <node pkg="safety_landing" type="RL_control_node.py" name="RL_control_node" output="screen"/>
+
 </launch>

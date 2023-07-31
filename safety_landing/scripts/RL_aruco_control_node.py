@@ -36,7 +36,7 @@ class RLControl:
         self.dt = (1.0 / self.hz)
 
         self.scale = 0.3
-        self.z_offset = 0.1
+        self.z_offset = 0.0
         self.rospack = rospkg.RosPack()
         self.onnxPath = self.rospack.get_path('safety_landing') + '/scripts/DroneLanding-8078831.onnx'
 

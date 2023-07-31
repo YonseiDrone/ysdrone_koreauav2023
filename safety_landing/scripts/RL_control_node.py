@@ -35,8 +35,8 @@ class RLControl:
         self.rate = rospy.Rate(self.hz)
         self.dt = (1.0 / self.hz)
 
-        self.scale = 0.4
-        self.z_offset = 0.1
+        self.scale = 0.2
+        self.z_offset = 0.02
         self.rospack = rospkg.RosPack()
         self.onnxPath = self.rospack.get_path('safety_landing') + '/scripts/DroneLanding-8078831.onnx'
 
@@ -77,7 +77,7 @@ class RLControl:
         self.landing_velocity.linear.x = action[1]
         self.landing_velocity.linear.y = action[0]
         self.landing_velocity.linear.z = action[2]
-        rospy.loginfo(f"action : {action}")
+        #rospy.loginfo(f"action : {action}")
         self.landing_vel_pub.publish(self.landing_velocity)
 
 
