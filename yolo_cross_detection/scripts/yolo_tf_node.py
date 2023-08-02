@@ -82,6 +82,7 @@ class MarkerDetection(object):
 
     def get_3d_coord(self, pixels, depth_frame):
         depth_frame = depth_frame
+        final_coords = []
 
         for pixel in pixels:
             pixel_x, pixel_y = pixel
@@ -132,11 +133,15 @@ class MarkerDetection(object):
             final_coord_y = self.current_pose.pose.position.y + enu_coord[1]
             final_coord_z = self.current_pose.pose.position.z + enu_coord[2]
 
-            rospy.loginfo(f"home_coord: {final_coord_x}, {final_coord_y}, {final_coord_z}")
-            self.final_coord.pose.position.x = final_coord_x
-            self.final_coord.pose.position.y = final_coord_y
-            self.final_coord.pose.position.z = final_coord_z
-            self.final_coord_pub.publish(self.final_coord)
+            final_coords.append([final_coord_x, final_coord_y, final_coord_z])
+
+            # rospy.loginfo(f"home_coord: {final_coord_x}, {final_coord_y}, {final_coord_z}")
+            # self.final_coord.pose.position.x = final_coord_x
+            # self.final_coord.pose.position.y = final_coord_y
+            # self.final_coord.pose.position.z = final_coord_z
+            # self.final_coord_pub.publish(self.final_coord)
+
+        return final_coords
     
     def square_sampling(left_top, right_bottom, interval=4):
         result = []
@@ -194,16 +199,19 @@ class MarkerDetection(object):
                     #cross marker의 이미지 상 좌표
                     cross_pos = ((xyxy[0] + xyxy[2])/2, (xyxy[1] + xyxy[3])/2)
                     #cross makrer내부의 점 sampling
-                    other_pos = square_sampling((xyxy[0], xyxy[1]), (xyxy[2], xyxy[3]))
+                    other_pos = self.square_sampling((xyxy[0], xyxy[1]), (xyxy[2], xyxy[3]))
                     #3차원으로 변환
-                    
+                    cross_pos = self.get_3d_coord([cross_pos], depth_frame)[0]
+                    other_pos = self.get_3d_coord(other_pos, depth_frame)
 
                     #drone의 3차원 좌표
                     drone_pos = [self.current_pose.pose.position.x, self.current_pose.pose.position.y, self.current_pose.pose.position.z]
 
                     #setpoint 계산
-                    cal_approch_setpoint(cross_pos, other_pos, drone_pos, offset=3)
+                    setpoint = self.cal_approch_setpoint(cross_pos, other_pos, drone_pos, offset=3)
 
+                    print(setpoint)
+                    
                     rospy.loginfo(f"Pixel Coordinate | x: {(xyxy[0] + xyxy[2])/2}, y: {(xyxy[1] + xyxy[3])/2}")
                     cv2.rectangle(rgb_frame, (int(xyxy[0]), int(xyxy[1])), (int(xyxy[2]), int(xyxy[3])), color=(0, 255, 0), thickness=2)
                     cv2.putText(rgb_frame, f'{xyxy[4]:.3f}', (int(xyxy[0]), int(xyxy[1])), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(0, 255, 0), thickness=2)
