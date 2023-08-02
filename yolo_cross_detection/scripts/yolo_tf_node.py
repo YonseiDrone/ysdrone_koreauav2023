@@ -40,8 +40,8 @@ class MarkerDetection(object):
     def __init__(self):
         self.rospack = rospkg.RosPack()
         self.yoloPath = self.rospack.get_path('yolo_cross_detection') + '/yolov5'
-        self.weightPath = self.rospack.get_path('yolo_cross_detection') + '/weight/yolov5nV4.pt'
-        self.model = torch.hub.load(self.yoloPath, 'custom', self.weightPath, source='local')
+        self.weightPath = self.rospack.get_path('yolo_cross_detection') + '/weight/yolov5nV4.onnx'
+        self.model = torch.hub.load(self.yoloPath, 'custom', self.weightPath, source='local', force_reload=True)
         self.model.iou = 0.5
         self.mission = 0
 
@@ -90,11 +90,18 @@ class MarkerDetection(object):
 
                 rgb_frame = bridge.imgmsg_to_cv2(rgb_image, desired_encoding="rgb8")
                 depth_frame = bridge.imgmsg_to_cv2(depth_image, desired_encoding="16UC1")
-                results = self.model(rgb_frame)
+                resolution = (rgb_frame.shape[0], rgb_frame.shape[1])
+                results = self.model(cv2.resize(rgb_frame, (640, 640)))
                 xyxy = None # Initialize xyx with None
 
                 for volume in results.xyxy[0]:
                     xyxy = volume.numpy()
+                    #resize
+                    xyxy[0] = xyxy[0] / 640 * resolution[0]
+                    xyxy[2] = xyxy[2] / 640 * resolution[0]
+                    xyxy[1] = xyxy[1] / 640 * resolution[1]
+                    xyxy[3] = xyxy[3] / 640 * resolution[1]
+
                     rospy.loginfo(f"Pixel Coordinate | x: {(xyxy[0] + xyxy[2])/2}, y: {(xyxy[1] + xyxy[3])/2}")
                     cv2.rectangle(rgb_frame, (int(xyxy[0]), int(xyxy[1])), (int(xyxy[2]), int(xyxy[3])), color=(0, 255, 0), thickness=2)
                     cv2.putText(rgb_frame, f'{xyxy[4]:.3f}', (int(xyxy[0]), int(xyxy[1])), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(0, 255, 0), thickness=2)
