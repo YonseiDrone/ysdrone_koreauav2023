@@ -3,6 +3,7 @@
 import rospy, rospkg
 import cv2, torch
 import numpy as np
+from scipy.linalg import svd
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge, CvBridgeError
 from ysdrone_msgs.srv import *
@@ -135,6 +136,38 @@ class MarkerDetection(object):
         self.final_coord.pose.position.z = final_coord_z
         self.final_coord_pub.publish(self.final_coord)
     
+    def square_sampling(left_top, right_bottom, interval=4):
+        result = []
+        x_start, y_start = left_top
+        x_end, y_end = right_bottom
+
+        for x in range(x_start, x_end + 1, interval):
+            for y in range(y_start, y_end + 1, interval):
+                result.append((x, y))
+
+        return result
+    
+    def cal_approch_setpoint(cross_pos, other_pos, drone_pos, offset):
+        # 주어진 점들의 개수
+        n = len(other_pos)
+        # 점들의 좌표를 배열로 변환
+        points = np.array(other_pos)
+        # 평균을 구함
+        mean_point = np.mean(points, axis=0)
+        # 중심을 원점으로 이동
+        centered_points = points - mean_point
+        # SVD(Singular Value Decomposition)를 사용하여 고유 벡터 계산
+        _, _, vh = svd(centered_points)
+        # 가장 작은 고유값에 해당하는 고유 벡터가 평면의 법선 벡터
+        normal_vector = vh[-1]
+        # drone 위치 대비 crossmarker 위치 벡터
+        cross_drone_vec = cross_pos - drone_pos
+
+        if np.dot(normal_vector, cross_drone_vec) > 0:
+            normal_vector = -normal_vector
+
+        # drone setpoint
+        return cross_pos + normal_vector / np.sqrt(normal_vector * normal_vector) * offset
 
     def image_cb(self, rgb_image, depth_image):
         bridge = CvBridge()
@@ -156,11 +189,26 @@ class MarkerDetection(object):
                     xyxy[1] = xyxy[1] / 640 * resolution[1]
                     xyxy[3] = xyxy[3] / 640 * resolution[1]
 
+                    #cross marker의 이미지 상 좌표
+                    cross_pos = ((xyxy[0] + xyxy[2])/2, (xyxy[1] + xyxy[3])/2)
+                    #cross makrer내부의 점 sampling
+                    other_pos = square_sampling((xyxy[0], xyxy[1]), (xyxy[2], xyxy[3]))
+                    #3차원으로 변환
+                    
+
+                    #drone의 3차원 좌표
+                    drone_pos = [self.current_pose.pose.position.x, self.current_pose.pose.position.y, self.current_pose.pose.position.z]
+
+                    #setpoint 계산
+                    cal_approch_setpoint(cross_pos, other_pos, drone_pos, offset=3)
+
                     rospy.loginfo(f"Pixel Coordinate | x: {(xyxy[0] + xyxy[2])/2}, y: {(xyxy[1] + xyxy[3])/2}")
                     cv2.rectangle(rgb_frame, (int(xyxy[0]), int(xyxy[1])), (int(xyxy[2]), int(xyxy[3])), color=(0, 255, 0), thickness=2)
                     cv2.putText(rgb_frame, f'{xyxy[4]:.3f}', (int(xyxy[0]), int(xyxy[1])), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(0, 255, 0), thickness=2)
-                    pixel_x = (xyxy[0] + xyxy[2])/2
-                    pixel_y = (xyxy[1] + xyxy[3])/2
+
+                    # crossmarker는 하나만 인식해야하므로 바로 break
+                    break
+                    
 
                 if xyxy is not None:
                     self.get_3d_coord(pixel_x, pixel_y, depth_frame)
