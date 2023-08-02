@@ -207,10 +207,19 @@ class MarkerDetection(object):
                     other_pos = self.get_3d_coord(other_pos, depth_frame)
 
                     #drone의 3차원 좌표
-                    drone_pos = [self.current_pose.pose.position.x, self.current_pose.pose.position.y, self.current_pose.pose.position.z]
+                    drone_pos = np.array([self.current_pose.pose.position.x, self.current_pose.pose.position.y, self.current_pose.pose.position.z])
 
                     #setpoint 계산
                     setpoint = self.cal_approch_setpoint(cross_pos, other_pos, drone_pos, offset=3)
+                    
+                    # yaw 계산
+                    error_yaw = math.atan2(cross_pos[1] - self.current_pose.pose.position.y, cross_pos[0] - self.current_pose.pose.position.x)
+                    qz = math.sin(error_yaw/2.0)
+                    qw = math.cos(error_yaw/2.0)
+                    self.target_pose.pose.orientation.x = 0.0
+                    self.target_pose.pose.orientation.y = 0.0
+                    self.target_pose.pose.orientation.z = qz
+                    self.target_pose.pose.orientation.w = qw
 
                     # Publish setpoint
                     self.target_pose.pose.position.x = setpoint[0]
