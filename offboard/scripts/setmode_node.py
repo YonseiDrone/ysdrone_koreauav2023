@@ -69,6 +69,19 @@ class SetmodeClass(object):
             rospy.loginfo_throttle(1, "Wait FCU connection")
         rospy.loginfo("FCU connected")
 
+    def land(self):
+        try:
+            response = self.set_mode_client(base_mode = 0, custom_mode = "LAND")
+        except rospy.ServiceException as e:
+            rospy.loginfo("Service call failed : %s" %e)
+        rospy.loginfo("Landing...")
+        # wait until the drone is disarmed
+        while self.current_state.armed:
+            rospy.sleep(1)
+            rospy.loginfo("Disarming...")
+        rospy.loginfo("Landed")
+
+
 if __name__ == "__main__":
     rospy.init_node('setmode_node', anonymous=True)
     try:
