@@ -57,6 +57,7 @@ private:
 	double last_goal_y;
 	double last_goal_z;
 	double building_search_mission, marker_mission;
+	Eigen::Vector4f centroid;
 
 /// ROS
 // publisher & subscriber

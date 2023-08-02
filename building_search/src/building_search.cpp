@@ -78,6 +78,7 @@ void BuildingSearch::command(const ros::TimerEvent& event)
                 move_to_target(marker_array.markers[0].pose.position.x, marker_array.markers[0].pose.position.y, marker_array.markers[0].pose.position.z);
                 ROS_INFO("[Building Search] Done");
                 searching_status += 1;
+                last_goal_reached = false;
             }
         }
     }
@@ -192,7 +193,6 @@ void BuildingSearch::cloud_cb(const sensor_msgs::PointCloud2ConstPtr& input)
             pcl::toROSMsg(*colored_cloud, colored_cloud_msg);
             colored_cloud_pub.publish(colored_cloud_msg);
 
-            Eigen::Vector4f centroid;
             pcl::compute3DCentroid(*cloud_cluster, centroid);
             // printf("centroid: %f %f %f\n", centroid[0], centroid[1], centroid[2]);
 
@@ -307,8 +307,8 @@ void BuildingSearch::move_to_target(double x, double y, double z)
 	current_target_position.pose.position.z = z;
 
 	double target_yaw = atan2(
-    current_target_position.pose.position.y - current_pose.pose.position.y,
-    current_target_position.pose.position.x - current_pose.pose.position.x);
+    centroid[1] - current_pose.pose.position.y,
+    centroid[0] - current_pose.pose.position.x);
 
 	// http://wiki.ros.org/tf2/Tutorials/Quaternions
 	// tf2::Quaternion q;
@@ -324,7 +324,7 @@ void BuildingSearch::move_to_target(double x, double y, double z)
 	current_target_position.pose.orientation.z = quaternion.z();
 	current_target_position.pose.orientation.w = quaternion.w();
 
-    while((distance(current_target_position, current_pose) > 0.5) && (orientationGap(current_target_position, current_pose)) > 0.5)
+    while((distance(current_target_position, current_pose) > 0.5) && (orientationGap(current_target_position, current_pose)) > 0.008)
     {
         goal_yaw_pub.publish(current_target_position);
         if (orientationGap(current_target_position, current_pose) > 5.0)
