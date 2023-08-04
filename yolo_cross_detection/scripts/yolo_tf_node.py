@@ -208,22 +208,31 @@ class MarkerDetection(object):
                     cross_pos = ((xyxy[0] + xyxy[2])/2, (xyxy[1] + xyxy[3])/2)
                     rospy.loginfo(f'marker pos : {cross_pos}')
                     #cross makrer 내부의 점 sampling
-                    #other_pos = self.square_sampling((xyxy[0], xyxy[1]), (xyxy[2], xyxy[3]))
+                    other_pos = self.square_sampling((xyxy[0], xyxy[1]), (xyxy[2], xyxy[3]))
                     #3차원으로 변환
                     cross_pos = self.get_3d_coord([cross_pos], depth_frame)[0]
-                    #other_pos = self.get_3d_coord(other_pos, depth_frame)
+                    other_pos = self.get_3d_coord(other_pos, depth_frame)
 
-                    #drone의 3차원 좌표
-                    #drone_pos = [self.current_pose.pose.position.x, self.current_pose.pose.position.y, self.current_pose.pose.position.z]
+                    #drone
+                    drone_pos = np.array([self.current_pose.pose.position.x, self.current_pose.pose.position.y, self.current_pose.pose.position.z])
 
                     #setpoint 계산
-                    #setpoint = self.cal_approch_setpoint(cross_pos, other_pos, drone_pos, offset=3)
+                    setpoint = self.cal_approch_setpoint(cross_pos, other_pos, drone_pos, offset=3)
+                    
+                    # yaw 계산
+                    error_yaw = math.atan2(cross_pos[1] - self.current_pose.pose.position.y, cross_pos[0] - self.current_pose.pose.position.x)
+                    qz = math.sin(error_yaw/2.0)
+                    qw = math.cos(error_yaw/2.0)
+                    self.target_pose.pose.orientation.x = 0.0
+                    self.target_pose.pose.orientation.y = 0.0
+                    self.target_pose.pose.orientation.z = qz
+                    self.target_pose.pose.orientation.w = qw
 
                     # Publish setpoint
-                    # self.target_pose.pose.position.x = setpoint[0]
-                    # self.target_pose.pose.position.y = setpoint[1]
-                    # self.target_pose.pose.position.z = setpoint[2]
-                    # self.target_pose_pub.publish(self.target_pose)                    
+                    self.target_pose.pose.position.x = setpoint[0]
+                    self.target_pose.pose.position.y = setpoint[1]
+                    self.target_pose.pose.position.z = setpoint[2]
+                    self.target_pose_pub.publish(self.target_pose)                    
 
                     #rospy.loginfo(f"Veranda Approch SetPoint : {setpoint}")
                     cv2.rectangle(rgb_frame, (int(xyxy[0]), int(xyxy[1])), (int(xyxy[2]), int(xyxy[3])), color=(0, 255, 0), thickness=2)
