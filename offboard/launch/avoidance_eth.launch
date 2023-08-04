@@ -1,7 +1,7 @@
 <launch>
   <!-- <arg name="fcu_url" default="/dev/ttyPixhawk:57600"/> -->
-  <arg name="fcu_url" default="udp://:14540@192.168.0.100:14557" />
-  <arg name="gcs_url" default="udp://:14560@192.168.0.2:14550" />
+  <arg name="fcu_url" default="udp://:14540@192.168.100.5:14557"/>
+  <arg name="gcs_url" default="udp://:14560@192.168.30.81:14550" />
   <arg name="tgt_system" default="1" />
   <arg name="tgt_component" default="1" />
   <arg name="pointcloud_topics" default="[/camera/depth/points]"/>

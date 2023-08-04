@@ -4,7 +4,7 @@ import rospy, rospkg
 import cv2, torch
 import numpy as np
 from scipy.linalg import svd
-from sensor_msgs.msg import Image
+from sensor_msgs.msg import Image, Imu
 from cv_bridge import CvBridge, CvBridgeError
 from ysdrone_msgs.srv import *
 from geometry_msgs.msg import Point
@@ -47,6 +47,8 @@ class MarkerDetection(object):
         self.current_state = State()
         self.current_pose = PoseStamped()
         self.final_coord = PoseStamped()
+
+        self.imu = Imu()
         self.target_pose = PoseStamped()
 
         # Subscriber
@@ -55,6 +57,7 @@ class MarkerDetection(object):
         self.state_sub = rospy.Subscriber('/mavros/state', State, self.state_cb)
         self.pose_sub = rospy.Subscriber('/mavros/local_position/pose', PoseStamped, self.pose_cb)
         self.mission_sub = rospy.Subscriber('/mission', Float32, self.mission_cb)
+        self.imu_sub = rospy.Subscriber('/mavros/imu/data', Imu, self.imu_cb)
 
 
 
@@ -69,6 +72,9 @@ class MarkerDetection(object):
     
     def mission_cb(self, msg):
         self.mission = msg.data
+
+    def imu_cb(self, msg):
+        self.imu = msg
 
     def state_cb(self, msg):
         prev_state = self.current_state
@@ -91,7 +97,7 @@ class MarkerDetection(object):
 
             distance = depth_frame[int(pixel_y), int(pixel_x)] # (y, x)
             pixel_center = np.array([int(pixel_x), int(pixel_y)]) # (x, y)
-
+            #rospy.loginfo(f"distance: {distance}")
             #===============================Camera coordinate==========================================
             intrinsic_matrix = np.array([[385.7627868652344, 0.0, 331.9479064941406],
                         [0.0, 385.4613342285156, 237.6436767578125],
@@ -103,8 +109,8 @@ class MarkerDetection(object):
             camera_coord = np.array([camera_center[0], camera_center[1], camera_center[2], 1])
             rospy.loginfo(f"camera_coord: {camera_coord}")
             #===============================FLU coordinate(front-left-up)==========================================
-            x_rotation = 90 * math.pi /180
-            y_rotation = -90 * math.pi /180
+            x_rotation = -90 * math.pi /180
+            y_rotation = 90 * math.pi /180
             z_rotation = 0 
             flu_x_rotation = np.array([[1,0,0], [0, np.cos(x_rotation), -np.sin(x_rotation)], [0, np.sin(x_rotation), np.cos(x_rotation)]])
             flu_y_rotation = np.array([[np.cos(y_rotation),0,np.sin(y_rotation)], [0,1,0], [-np.sin(y_rotation), 0, np.cos(y_rotation)]])
@@ -119,7 +125,8 @@ class MarkerDetection(object):
             flu_coord = np.dot(camera_to_flu, camera_coord)
             rospy.loginfo(f"flu_coord: {flu_coord}")
             #==================================ENU coordinate(east-north-up)=======================================
-            _, _, yaw = to_euler_angles(self.current_pose.pose.orientation.x, self.current_pose.pose.orientation.y, self.current_pose.pose.orientation.z, self.current_pose.pose.orientation.w)
+            _, _, yaw = to_euler_angles(self.imu.orientation.x, self.imu.orientation.y, self.imu.orientation.z, self.imu.orientation.w)
+            #rospy.loginfo(f"yaw: {yaw*180/math.pi}")
 
             enu_rotation = np.array([[np.cos(yaw), -np.sin(yaw), 0], [np.sin(yaw), np.cos(yaw), 0], [0, 0, 1]])
             enu_translation = np.array([0, 0, 0])
@@ -137,11 +144,11 @@ class MarkerDetection(object):
 
             final_coords.append([final_coord_x, final_coord_y, final_coord_z])
 
-            # rospy.loginfo(f"home_coord: {final_coord_x}, {final_coord_y}, {final_coord_z}")
-            # self.final_coord.pose.position.x = final_coord_x
-            # self.final_coord.pose.position.y = final_coord_y
-            # self.final_coord.pose.position.z = final_coord_z
-            # self.final_coord_pub.publish(self.final_coord)
+            rospy.loginfo(f"home_coord: {final_coord_x}, {final_coord_y}, {final_coord_z}")
+            self.final_coord.pose.position.x = final_coord_x
+            self.final_coord.pose.position.y = final_coord_y
+            self.final_coord.pose.position.z = final_coord_z
+            self.final_coord_pub.publish(self.final_coord)
 
         return final_coords
     
@@ -180,12 +187,11 @@ class MarkerDetection(object):
 
     def image_cb(self, rgb_image, depth_image):
         bridge = CvBridge()
-
+        rgb_frame = bridge.imgmsg_to_cv2(rgb_image, desired_encoding='rgb8')
+        depth_frame = bridge.imgmsg_to_cv2(depth_image, desired_encoding='16UC1')
         try:
             if self.mission == 3:
 
-                rgb_frame = bridge.imgmsg_to_cv2(rgb_image, desired_encoding="rgb8")
-                depth_frame = bridge.imgmsg_to_cv2(depth_image, desired_encoding="16UC1")
                 resolution = (rgb_frame.shape[0], rgb_frame.shape[1])
                 results = self.model(cv2.resize(rgb_frame, (640, 640)))
                 xyxy = None # Initialize xyx with None
@@ -193,32 +199,33 @@ class MarkerDetection(object):
                 for volume in results.xyxy[0]:
                     xyxy = volume.numpy()
                     #resize
-                    xyxy[0] = xyxy[0] / 640 * resolution[0]
-                    xyxy[2] = xyxy[2] / 640 * resolution[0]
-                    xyxy[1] = xyxy[1] / 640 * resolution[1]
-                    xyxy[3] = xyxy[3] / 640 * resolution[1]
+                    xyxy[0] = xyxy[0] / 640 * resolution[1]
+                    xyxy[2] = xyxy[2] / 640 * resolution[1]
+                    xyxy[1] = xyxy[1] / 640 * resolution[0]
+                    xyxy[3] = xyxy[3] / 640 * resolution[0]
 
                     #cross marker의 이미지 상 좌표
                     cross_pos = ((xyxy[0] + xyxy[2])/2, (xyxy[1] + xyxy[3])/2)
+                    rospy.loginfo(f'marker pos : {cross_pos}')
                     #cross makrer 내부의 점 sampling
-                    other_pos = self.square_sampling((xyxy[0], xyxy[1]), (xyxy[2], xyxy[3]))
+                    #other_pos = self.square_sampling((xyxy[0], xyxy[1]), (xyxy[2], xyxy[3]))
                     #3차원으로 변환
                     cross_pos = self.get_3d_coord([cross_pos], depth_frame)[0]
-                    other_pos = self.get_3d_coord(other_pos, depth_frame)
+                    #other_pos = self.get_3d_coord(other_pos, depth_frame)
 
                     #drone의 3차원 좌표
-                    drone_pos = [self.current_pose.pose.position.x, self.current_pose.pose.position.y, self.current_pose.pose.position.z]
+                    #drone_pos = [self.current_pose.pose.position.x, self.current_pose.pose.position.y, self.current_pose.pose.position.z]
 
                     #setpoint 계산
-                    setpoint = self.cal_approch_setpoint(cross_pos, other_pos, drone_pos, offset=3)
+                    #setpoint = self.cal_approch_setpoint(cross_pos, other_pos, drone_pos, offset=3)
 
                     # Publish setpoint
-                    self.target_pose.pose.position.x = setpoint[0]
-                    self.target_pose.pose.position.y = setpoint[1]
-                    self.target_pose.pose.position.z = setpoint[2]
-                    self.target_pose_pub.publish(self.target_pose)                    
+                    # self.target_pose.pose.position.x = setpoint[0]
+                    # self.target_pose.pose.position.y = setpoint[1]
+                    # self.target_pose.pose.position.z = setpoint[2]
+                    # self.target_pose_pub.publish(self.target_pose)                    
 
-                    rospy.loginfo(f"Veranda Approch SetPoint : {setpoint}")
+                    #rospy.loginfo(f"Veranda Approch SetPoint : {setpoint}")
                     cv2.rectangle(rgb_frame, (int(xyxy[0]), int(xyxy[1])), (int(xyxy[2]), int(xyxy[3])), color=(0, 255, 0), thickness=2)
                     cv2.putText(rgb_frame, f'{xyxy[4]:.3f}', (int(xyxy[0]), int(xyxy[1])), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(0, 255, 0), thickness=2)
 
@@ -226,8 +233,8 @@ class MarkerDetection(object):
                     break
                     
 
-                if xyxy is not None:
-                    self.get_3d_coord(pixels, depth_frame)
+                # if xyxy is not None:
+                #     self.get_3d_coord(pixels, depth_frame)
 
             try:
                 self.image_pub.publish(bridge.cv2_to_imgmsg(rgb_frame, "rgb8"))
