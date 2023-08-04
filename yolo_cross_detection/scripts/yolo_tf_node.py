@@ -216,20 +216,15 @@ class MarkerDetection(object):
         return result
     
     def cal_approch_setpoint(cross_pos, other_pos, drone_pos, offset):
-        # 주어진 점들의 개수
         n = len(other_pos)
-        # 점들의 좌표를 배열로 변환
         points = np.array(other_pos)
-        # 평균을 구함
         mean_point = np.mean(points, axis=0)
-        # 중심을 원점으로 이동
         centered_points = points - mean_point
-        # SVD(Singular Value Decomposition)를 사용하여 고유 벡터 계산
+        # SVD(Singular Value Decomposition)
         _, _, vh = svd(centered_points)
-        # 가장 작은 고유값에 해당하는 고유 벡터가 평면의 법선 벡터
         normal_vector = vh[-1]
         normal_vector[2] = 0
-        # drone 위치 대비 crossmarker 위치 벡터
+        
         cross_drone_vec = cross_pos - drone_pos
 
         if np.dot(normal_vector, cross_drone_vec) > 0:
