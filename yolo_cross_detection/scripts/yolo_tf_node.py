@@ -44,6 +44,13 @@ class MarkerDetection(object):
         self.model.iou = 0.5
         self.mission = 0
 
+        #setpoint 관련
+        self.offset = 4
+        self.min_offset = 2
+        self.offset_interval = 0.1
+        self.displacement_steady = 0.2
+        self.launch_ready = False
+
         self.current_state = State()
         self.current_pose = PoseStamped()
         self.final_coord = PoseStamped()
@@ -55,8 +62,6 @@ class MarkerDetection(object):
         self.state_sub = rospy.Subscriber('/mavros/state', State, self.state_cb)
         self.pose_sub = rospy.Subscriber('/mavros/local_position/pose', PoseStamped, self.pose_cb)
         self.mission_sub = rospy.Subscriber('/mission', Float32, self.mission_cb)
-
-
 
         # Synchronize the topics
         ts = message_filters.ApproximateTimeSynchronizer([self.rgb_image_sub, self.depth_image_sub], queue_size=10, slop=0.1)
@@ -103,8 +108,8 @@ class MarkerDetection(object):
             camera_coord = np.array([camera_center[0], camera_center[1], camera_center[2], 1])
             rospy.loginfo(f"camera_coord: {camera_coord}")
             #===============================FLU coordinate(front-left-up)==========================================
-            x_rotation = 90 * math.pi /180
-            y_rotation = -90 * math.pi /180
+            x_rotation = -90 * math.pi /180
+            y_rotation = 90 * math.pi /180
             z_rotation = 0 
             flu_x_rotation = np.array([[1,0,0], [0, np.cos(x_rotation), -np.sin(x_rotation)], [0, np.sin(x_rotation), np.cos(x_rotation)]])
             flu_y_rotation = np.array([[np.cos(y_rotation),0,np.sin(y_rotation)], [0,1,0], [-np.sin(y_rotation), 0, np.cos(y_rotation)]])
@@ -145,7 +150,54 @@ class MarkerDetection(object):
 
         return final_coords
     
-    def square_sampling(left_top, right_bottom, interval=4):
+    def get_2d_coord(self, position):
+        # inverse tf of get_3d_coord
+        #=============================Local to ENU coordinate(drone position)===============
+        enu_coord = np.zeros(3)
+        enu_coord[0] = position[0] - self.current_pose.pose.position.x
+        enu_coord[1] = position[1] - self.current_pose.pose.position.y
+        enu_coord[2] = position[2] - self.current_pose.pose.position.z
+
+        #==================================ENU to FLU coordinate(east-north-up)=======================================
+        _, _, yaw = to_euler_angles(self.current_pose.pose.orientation.x, self.current_pose.pose.orientation.y, self.current_pose.pose.orientation.z, self.current_pose.pose.orientation.w)
+        yaw *= -1
+        enu_rotation = np.array([[np.cos(yaw), -np.sin(yaw), 0], [np.sin(yaw), np.cos(yaw), 0], [0, 0, 1]])
+        enu_translation = np.array([0, 0, 0])
+
+        enu_to_flu = np.eye(4)
+        enu_to_flu[:3, :3] = enu_rotation
+        enu_to_flu[:3, 3] = enu_translation
+
+        flu_coord = np.dot(enu_to_flu, enu_coord)
+
+        #===============================FLU to Camera coordinate(front-left-up)==========================================
+        x_rotation = 90 * math.pi /180
+        y_rotation = -90 * math.pi /180
+        z_rotation = 0 
+        flu_x_rotation = np.array([[1,0,0], [0, np.cos(x_rotation), -np.sin(x_rotation)], [0, np.sin(x_rotation), np.cos(x_rotation)]])
+        flu_y_rotation = np.array([[np.cos(y_rotation),0,np.sin(y_rotation)], [0,1,0], [-np.sin(y_rotation), 0, np.cos(y_rotation)]])
+        flu_z_rotation = np.array([[np.cos(z_rotation), -np.sin(z_rotation), 0], [np.sin(z_rotation), np.cos(z_rotation), 0], [0,0,1]])
+        flu_rotation = np.dot(flu_x_rotation, flu_y_rotation)
+        flu_translation = np.array([0, 0, 0])
+
+        flu_to_cam = np.eye(4)
+        flu_to_cam[:3, :3] = flu_rotation
+        flu_to_cam[:3, 3] = flu_translation
+
+        cam_coord = np.dot(flu_to_cam, flu_coord)
+
+        #===============================Camera to Image coordinate==========================================
+        intrinsic_matrix = np.array([[385.7627868652344, 0.0, 331.9479064941406],
+                    [0.0, 385.4613342285156, 237.6436767578125],
+                    [0.0, 0.0, 1.0]])
+        image_coordinates = np.dot(intrinsic_matrix, cam_coord)
+        u = image_coordinates[0] / image_coordinates[2]
+        v = image_coordinates[1] / image_coordinates[2]
+
+        return [int(u), int(v)]
+    
+    
+    def square_sampling(left_top, right_bottom, interval=5):
         result = []
         x_start, y_start = left_top
         x_end, y_end = right_bottom
@@ -169,6 +221,7 @@ class MarkerDetection(object):
         _, _, vh = svd(centered_points)
         # 가장 작은 고유값에 해당하는 고유 벡터가 평면의 법선 벡터
         normal_vector = vh[-1]
+        normal_vector[2] = 0
         # drone 위치 대비 crossmarker 위치 벡터
         cross_drone_vec = cross_pos - drone_pos
 
@@ -176,7 +229,7 @@ class MarkerDetection(object):
             normal_vector = -normal_vector
 
         # drone setpoint
-        return cross_pos + normal_vector / np.sqrt(normal_vector * normal_vector) * offset
+        return cross_pos + normal_vector / np.sqrt(np.sum(normal_vector * normal_vector)) * offset
 
     def image_cb(self, rgb_image, depth_image):
         bridge = CvBridge()
@@ -203,15 +256,24 @@ class MarkerDetection(object):
                     #cross makrer 내부의 점 sampling
                     other_pos = self.square_sampling((xyxy[0], xyxy[1]), (xyxy[2], xyxy[3]))
                     #3차원으로 변환
-                    cross_pos = self.get_3d_coord([cross_pos], depth_frame)[0]
-                    other_pos = self.get_3d_coord(other_pos, depth_frame)
+                    cross_pos_3d = self.get_3d_coord([cross_pos], depth_frame)[0]
+                    other_pos_3d = self.get_3d_coord(other_pos, depth_frame)
 
                     #drone의 3차원 좌표
-                    drone_pos = np.array([self.current_pose.pose.position.x, self.current_pose.pose.position.y, self.current_pose.pose.position.z])
+                    drone_pos_3d = np.array([self.current_pose.pose.position.x, self.current_pose.pose.position.y, self.current_pose.pose.position.z])
 
                     #setpoint 계산
-                    setpoint = self.cal_approch_setpoint(cross_pos, other_pos, drone_pos, offset=3)
+                    setpoint = self.cal_approch_setpoint(cross_pos_3d, other_pos_3d, drone_pos_3d, offset=self.offset)
                     
+                    #offset update
+                    if self.offset == self.min_offset:
+                        self.launch_ready = True
+                        rospy.loginfo(f"Launch!!")
+                    else:
+                        displacement = drone_pos_3d - setpoint
+                        if np.sqrt(np.sum(displacement*displacement)) < self.displacement_steady:
+                            self.offset -= self.offset_interval
+
                     # yaw 계산
                     error_yaw = math.atan2(cross_pos[1] - self.current_pose.pose.position.y, cross_pos[0] - self.current_pose.pose.position.x)
                     qz = math.sin(error_yaw/2.0)
@@ -230,13 +292,9 @@ class MarkerDetection(object):
                     rospy.loginfo(f"Veranda Approch SetPoint : {setpoint}")
                     cv2.rectangle(rgb_frame, (int(xyxy[0]), int(xyxy[1])), (int(xyxy[2]), int(xyxy[3])), color=(0, 255, 0), thickness=2)
                     cv2.putText(rgb_frame, f'{xyxy[4]:.3f}', (int(xyxy[0]), int(xyxy[1])), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(0, 255, 0), thickness=2)
-
+                    cv2.line(rgb_frame, cross_pos, self.get_2d_coord(setpoint), (0, 255, 0), thickness=3)
                     # crossmarker는 하나만 인식해야하므로 바로 break
                     break
-                    
-
-                if xyxy is not None:
-                    self.get_3d_coord(pixels, depth_frame)
 
             try:
                 self.image_pub.publish(bridge.cv2_to_imgmsg(rgb_frame, "rgb8"))
