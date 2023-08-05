@@ -35,6 +35,87 @@ def to_euler_angles(x, y, z, w):
     return angles_roll, angles_pitch, angles_yaw
 
 
+class KalmanFilter(object):
+    def __init__(self, dt, u_x, u_y, u_z, std_acc, x_std_meas, y_std_meas, z_std_meas):
+        """
+        dt : sampling time(time for 1 cycle)
+        u_x : acceleration in x-direction
+        u_y : acceleration in y-direction
+        u_z : acceleration in z-direction
+        std_acc : process noise magnitude
+        x_std_meas : standard deviation of the measurement in x-direction
+        y_std_meas : standard deviation of the measurement in y-direction
+        z_std_meas : standard deviation of the measurement in z-direction
+        """
+        # Define sampling time
+        self.dt = dt
+
+        # Define the control input variable
+        self.u = np.array([[u_x], [u_y], [u_z]])
+
+        # Initialize the state(x,y,z,x',y',z')
+        self.x = np.array([[0], [0], [0], [0], [0], [0]])
+
+        # Define the State Transition Matrix A
+        self.A = np.array([[1, 0, 0, self.dt, 0, 0],
+                            [0, 1, 0, 0, self.dt, 0],
+                            [0, 0, 1, 0, 0, self.dt],
+                            [0, 0, 0, 1, 0, 0],
+                            [0, 0, 0, 0, 1, 0],
+                            [0, 0, 0, 0, 0, 1]])
+        # Define the Control Input Matrix B
+        self.B = np.array([[(self.dt**2)/2, 0, 0],
+                            [0, (self.dt**2)/2, 0],
+                            [0, 0, (self.dt**2)/2],
+                            [self.dt, 0, 0],
+                            [0, self.dt, 0],
+                            [0, 0, self.dt]])
+        # Define the Measurement Mapping Matrix
+        # Assume that we are only measuring the position but not the velocity
+        self.H = np.array([[1, 0, 0, 0, 0, 0],
+                            [0, 1, 0, 0, 0, 0],
+                            [0, 0, 1, 0, 0, 0]])
+        # Initialize the Process Noise Covariance
+        self.Q = np.array([[(self.dt**4)/4, 0, 0, (self.dt**3)/2, 0, 0],
+                            [0, (self.dt**4)/4, 0, 0, (self.dt**3)/2, 0],
+                            [0, 0, (self.dt**4)/4, 0, 0, (self.dt**3)/2],
+                            [(self.dt**3)/2, 0, 0, self.dt**2, 0, 0],
+                            [0, (self.dt**3)/2, 0, 0, self.dt**2, 0],
+                            [0, 0, (self.dt**3)/2, 0, 0, self.dt**2]]) * (std_acc**2)
+        # Initialize the Measurement Noise Covariance
+        self.R = np.array([[x_std_meas**2, 0, 0],
+                            [0, y_std_meas**2, 0],
+                            [0, 0, z_std_meas**2]])
+        # Initialize the Covariance Matrix
+        # identity array whose shape is the same as the shape of the matrix A
+        self.P = np.eye(self.A.shape[1])
+
+    def predict(self):
+        # update time state
+        # x_k = A*x_(k-1) + B*u_(k-1)
+        self.x = np.dot(self.A, self.x) + np.dot(self.B, self.u)
+
+        # calculate the error covariance
+        # P = A*P*A^T + Q
+        self.P = np.dot(np.dot(self.A, self.P), self.A.T) + self.Q
+        return self.x[0:3] # return x,y,z
+    
+    def update(self, z):
+        # S = H*P*H^T + R
+        S = np.dot(self.H, np.dot(self.P, self.H.T)) + self.R
+
+        # calculate the Kalman Gain
+        # K = P * H^T * inv(H*P*H^T + R)
+        K = np.dot(np.dot(self.P, self.H.T), np.linalg.inv(S))
+
+        self.x = np.round(self.x + np.dot(K, (z - np.dot(self.H, self.x))), 3)
+        I = np.eye(self.H.shape[1])
+
+        # update error covariance matrix
+        self.P = (I - (K@self.H)) @ self.P
+        return self.x[0:3]
+
+
 class MarkerDetection(object):
     def __init__(self):
         self.rospack = rospkg.RosPack()
@@ -44,9 +125,12 @@ class MarkerDetection(object):
         self.model.iou = 0.5
         self.mission = 0
 
-        #setpoint 관련
-        self.offset = 4
-        self.min_offset = 2
+        # KalmanFilter(dt, u_x, u_y, u_z, std_acc, x_std_meas, y_std_meas, z_std_meas)
+        self.KF = KalmanFilter(0.1, 0.1, 0.1, 0.1, 1, 0.1, 0.1, 0.1)
+
+        #setpoint
+        self.offset = 1 #4 # Distance from the cross marker
+        self.min_offset = 0.5 #3 # Minimum distance 
         self.offset_interval = 0.1
         self.displacement_steady = 0.2
         self.launch_ready = False
@@ -73,7 +157,7 @@ class MarkerDetection(object):
         # Publisher
         self.image_pub = rospy.Publisher('/cross_image', Image, queue_size=1)
         self.final_coord_pub = rospy.Publisher('/marker_position/home', PoseStamped, queue_size=1)
-        self.target_pose_pub = rospy.Publisher('/veranda_setpoint', PoseStamped, queue_size=1)
+        self.target_pose_pub = rospy.Publisher('/launch_setposition', PoseStamped, queue_size=1)
     
     def mission_cb(self, msg):
         self.mission = msg.data
@@ -112,7 +196,7 @@ class MarkerDetection(object):
             camera_center[0] = (pixel_center[0] - intrinsic_matrix[0,2]) * camera_center[2] / intrinsic_matrix[0, 0] #x
             camera_center[1] = (pixel_center[1] - intrinsic_matrix[1,2]) * camera_center[2] / intrinsic_matrix[1, 1] #y
             camera_coord = np.array([camera_center[0], camera_center[1], camera_center[2], 1])
-            rospy.loginfo(f"camera_coord: {camera_coord}")
+            # rospy.loginfo(f"camera_coord: {camera_coord}")
             #===============================FLU coordinate(front-left-up)==========================================
             x_rotation = -90 * math.pi /180
             y_rotation = 90 * math.pi /180
@@ -128,7 +212,7 @@ class MarkerDetection(object):
             camera_to_flu[:3, 3] = flu_translation
 
             flu_coord = np.dot(camera_to_flu, camera_coord)
-            rospy.loginfo(f"flu_coord: {flu_coord}")
+            # rospy.loginfo(f"flu_coord: {flu_coord}")
             #==================================ENU coordinate(east-north-up)=======================================
             _, _, yaw = to_euler_angles(self.imu.orientation.x, self.imu.orientation.y, self.imu.orientation.z, self.imu.orientation.w)
             #rospy.loginfo(f"yaw: {yaw*180/math.pi}")
@@ -141,32 +225,44 @@ class MarkerDetection(object):
             flu_to_enu[:3, 3] = enu_translation
 
             enu_coord = np.dot(flu_to_enu, flu_coord)
-            rospy.loginfo(f"enu_coord: {enu_coord}")
+            # rospy.loginfo(f"enu_coord: {enu_coord}")
             #=============================Local coordinate(home position)===============
-            final_coord_x = self.current_pose.pose.position.x + enu_coord[0]
-            final_coord_y = self.current_pose.pose.position.y + enu_coord[1]
-            final_coord_z = self.current_pose.pose.position.z + enu_coord[2]
+            # final_coord_x = self.current_pose.pose.position.x + enu_coord[0]
+            # final_coord_y = self.current_pose.pose.position.y + enu_coord[1]
+            # final_coord_z = self.current_pose.pose.position.z + enu_coord[2]
 
-            final_coords.append([final_coord_x, final_coord_y, final_coord_z])
+            # final_coords.append([final_coord_x, final_coord_y, final_coord_z])
 
-            rospy.loginfo(f"home_coord: {final_coord_x}, {final_coord_y}, {final_coord_z}")
-            self.final_coord.pose.position.x = final_coord_x
-            self.final_coord.pose.position.y = final_coord_y
-            self.final_coord.pose.position.z = final_coord_z
-            self.final_coord_pub.publish(self.final_coord)
+            # rospy.loginfo(f"GPS: {self.current_pose.pose.position.x}, {self.current_pose.pose.position.y}, {self.current_pose.pose.position.z}")
+            # rospy.loginfo(f"home_coord: {final_coord_x}, {final_coord_y}, {final_coord_z}")
+            # self.final_coord.pose.position.x = final_coord_x
+            # self.final_coord.pose.position.y = final_coord_y
+            # self.final_coord.pose.position.z = final_coord_z
+            # self.final_coord_pub.publish(self.final_coord)
+
+
+            #======================FAKE==========================================
+            # self.KF.predict()
+            # z = np.array([[enu_coord[0]], [enu_coord[1]], [enu_coord[2]]])
+            # enu_coord[0:3] =self.KF.update(z).flatten()
+            # rospy.loginfo(f"enu_coord: {enu_coord[0:3]}")
+            final_coords.append(enu_coord[0:3])
+            #====================================================================
 
         return final_coords
     
     def get_2d_coord(self, position):
         # inverse tf of get_3d_coord
         #=============================Local to ENU coordinate(drone position)===============
-        enu_coord = np.zeros(3)
-        enu_coord[0] = position[0] - self.current_pose.pose.position.x
-        enu_coord[1] = position[1] - self.current_pose.pose.position.y
-        enu_coord[2] = position[2] - self.current_pose.pose.position.z
+        position = np.array([position[0], position[1], position[2], 1])
+        # enu_coord = np.zeros(3)
+        # enu_coord[0] = position[0] - self.current_pose.pose.position.x
+        # enu_coord[1] = position[1] - self.current_pose.pose.position.y
+        # enu_coord[2] = position[2] - self.current_pose.pose.position.z
 
         #==================================ENU to FLU coordinate(east-north-up)=======================================
-        _, _, yaw = to_euler_angles(self.current_pose.pose.orientation.x, self.current_pose.pose.orientation.y, self.current_pose.pose.orientation.z, self.current_pose.pose.orientation.w)
+        # _, _, yaw = to_euler_angles(self.current_pose.pose.orientation.x, self.current_pose.pose.orientation.y, self.current_pose.pose.orientation.z, self.current_pose.pose.orientation.w)
+        _, _, yaw = to_euler_angles(self.imu.orientation.x, self.imu.orientation.y, self.imu.orientation.z, self.imu.orientation.w)
         yaw *= -1
         enu_rotation = np.array([[np.cos(yaw), -np.sin(yaw), 0], [np.sin(yaw), np.cos(yaw), 0], [0, 0, 1]])
         enu_translation = np.array([0, 0, 0])
@@ -175,16 +271,22 @@ class MarkerDetection(object):
         enu_to_flu[:3, :3] = enu_rotation
         enu_to_flu[:3, 3] = enu_translation
 
-        flu_coord = np.dot(enu_to_flu, enu_coord)
+        # flu_coord = np.dot(enu_to_flu, enu_coord)
+
+        #=====================FAKE=====================
+        flu_coord = np.dot(enu_to_flu, position)
+        #==============================================
+
 
         #===============================FLU to Camera coordinate(front-left-up)==========================================
-        x_rotation = 90 * math.pi /180
-        y_rotation = -90 * math.pi /180
+        x_rotation = -90 * math.pi /180
+        y_rotation = 90 * math.pi /180
         z_rotation = 0 
         flu_x_rotation = np.array([[1,0,0], [0, np.cos(x_rotation), -np.sin(x_rotation)], [0, np.sin(x_rotation), np.cos(x_rotation)]])
         flu_y_rotation = np.array([[np.cos(y_rotation),0,np.sin(y_rotation)], [0,1,0], [-np.sin(y_rotation), 0, np.cos(y_rotation)]])
         flu_z_rotation = np.array([[np.cos(z_rotation), -np.sin(z_rotation), 0], [np.sin(z_rotation), np.cos(z_rotation), 0], [0,0,1]])
         flu_rotation = np.dot(flu_x_rotation, flu_y_rotation)
+        flu_rotation = np.linalg.inv(flu_rotation)
         flu_translation = np.array([0, 0, 0])
 
         flu_to_cam = np.eye(4)
@@ -193,18 +295,20 @@ class MarkerDetection(object):
 
         cam_coord = np.dot(flu_to_cam, flu_coord)
 
-        #===============================Camera to Image coordinate==========================================
+        #===============================Camera to Pixel coordinate==========================================
         intrinsic_matrix = np.array([[385.7627868652344, 0.0, 331.9479064941406],
                     [0.0, 385.4613342285156, 237.6436767578125],
                     [0.0, 0.0, 1.0]])
+        cam_coord = cam_coord[:3]
         image_coordinates = np.dot(intrinsic_matrix, cam_coord)
         u = image_coordinates[0] / image_coordinates[2]
         v = image_coordinates[1] / image_coordinates[2]
+        rospy.loginfo(f"image_coordinate: {image_coordinates}")
 
         return [int(u), int(v)]
     
     
-    def square_sampling(left_top, right_bottom, interval=5):
+    def square_sampling(self, left_top, right_bottom, interval=5):
         result = []
         x_start, y_start = left_top
         x_end, y_end = right_bottom
@@ -215,9 +319,10 @@ class MarkerDetection(object):
 
         return result
     
-    def cal_approch_setpoint(cross_pos, other_pos, drone_pos, offset):
+    def cal_approch_setpoint(self, cross_pos, other_pos, drone_pos, offset):
         n = len(other_pos)
         points = np.array(other_pos)
+
         mean_point = np.mean(points, axis=0)
         centered_points = points - mean_point
         # SVD(Singular Value Decomposition)
@@ -252,16 +357,21 @@ class MarkerDetection(object):
                     xyxy[1] = xyxy[1] / 640 * resolution[0]
                     xyxy[3] = xyxy[3] / 640 * resolution[0]
 
-                    #cross marker의 이미지 상 좌표
+                    #Center of cross marker in pixel coord
                     cross_pos = ((xyxy[0] + xyxy[2])/2, (xyxy[1] + xyxy[3])/2)
-                    #cross makrer 내부의 점 sampling
-                    other_pos = self.square_sampling((xyxy[0], xyxy[1]), (xyxy[2], xyxy[3]))
-                    #3차원으로 변환
+                    #cross makrer sampling in pixel coord
+                    other_pos = self.square_sampling((int(xyxy[0]), int(xyxy[1])), (int(xyxy[2]), int(xyxy[3])))
+                    #tf to 3d
                     cross_pos_3d = self.get_3d_coord([cross_pos], depth_frame)[0]
                     other_pos_3d = self.get_3d_coord(other_pos, depth_frame)
+                    # rospy.loginfo(f"other_pos_3d {other_pos_3d}")
 
-                    #drone의 3차원 좌표
-                    drone_pos_3d = np.array([self.current_pose.pose.position.x, self.current_pose.pose.position.y, self.current_pose.pose.position.z])
+                    # drone position in 3D
+                    # drone_pos_3d = np.array([self.current_pose.pose.position.x, self.current_pose.pose.position.y, self.current_pose.pose.position.z])
+
+                    #============================FAKE================================
+                    drone_pos_3d = np.array([0.0, 0.0, 0.0])
+                    #===============================================================
 
                     #setpoint 계산
                     setpoint = self.cal_approch_setpoint(cross_pos_3d, other_pos_3d, drone_pos_3d, offset=self.offset)
@@ -276,13 +386,13 @@ class MarkerDetection(object):
                             self.offset -= self.offset_interval
 
                     # yaw 계산
-                    error_yaw = math.atan2(cross_pos[1] - self.current_pose.pose.position.y, cross_pos[0] - self.current_pose.pose.position.x)
-                    qz = math.sin(error_yaw/2.0)
-                    qw = math.cos(error_yaw/2.0)
-                    self.target_pose.pose.orientation.x = 0.0
-                    self.target_pose.pose.orientation.y = 0.0
-                    self.target_pose.pose.orientation.z = qz
-                    self.target_pose.pose.orientation.w = qw
+                    # error_yaw = math.atan2(cross_pos_3d[1] - self.current_pose.pose.position.y, cross_pos_3d[0] - self.current_pose.pose.position.x)
+                    # qz = math.sin(error_yaw/2.0)
+                    # qw = math.cos(error_yaw/2.0)
+                    # self.target_pose.pose.orientation.x = 0.0
+                    # self.target_pose.pose.orientation.y = 0.0
+                    # self.target_pose.pose.orientation.z = qz
+                    # self.target_pose.pose.orientation.w = qw
 
                     # Publish setpoint
                     self.target_pose.pose.position.x = setpoint[0]
@@ -290,11 +400,11 @@ class MarkerDetection(object):
                     self.target_pose.pose.position.z = setpoint[2]
                     self.target_pose_pub.publish(self.target_pose)                    
 
-                    #rospy.loginfo(f"Veranda Approch SetPoint : {setpoint}")
+                    rospy.loginfo(f"Veranda Approch SetPoint : {setpoint}")
                     cv2.rectangle(rgb_frame, (int(xyxy[0]), int(xyxy[1])), (int(xyxy[2]), int(xyxy[3])), color=(0, 255, 0), thickness=2)
                     cv2.putText(rgb_frame, f'{xyxy[4]:.3f}', (int(xyxy[0]), int(xyxy[1])), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(0, 255, 0), thickness=2)
-                    cv2.line(rgb_frame, cross_pos, self.get_2d_coord(setpoint), (0, 255, 0), thickness=3)
-                    # crossmarker는 하나만 인식해야하므로 바로 break
+                    cv2.line(rgb_frame, (int(cross_pos[0]), int(cross_pos[1])), self.get_2d_coord(setpoint), (255, 0, 0), thickness=3)
+                    # crossmarker break
                     break
 
             try:
