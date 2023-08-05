@@ -251,6 +251,60 @@ class MarkerDetection(object):
 
         return final_coords
     
+    def get_3d_coord_fast(self, pixels, depth_frame):
+        intrinsic_matrix = np.array([[385.7627868652344, 0.0, 331.9479064941406],
+                                    [0.0, 385.4613342285156, 237.6436767578125],
+                                    [0.0, 0.0, 1.0]])
+        
+        pixels = np.array(pixels).astype(np.int)
+        depth_frame = depth_frame
+        distances = depth_frame[pixels[:, 1], pixels[:, 0]] * 0.001
+
+        #=====================Image to Camera======================================================================
+        camera_coords = np.ones(len(distances, 4))
+        camera_coords[:, 2] = distances
+        camera_coords[:, 0] = (pixels[:, 0] - intrinsic_matrix[0,2]) * camera_coords[:, 2] / intrinsic_matrix[0, 0] #x
+        camera_coords[:, 1] = (pixels[:, 1] - intrinsic_matrix[1,2]) * camera_coords[:, 2] / intrinsic_matrix[1, 1] #y
+        #==========================================================================================================
+
+        #=====================Camera to FLU========================================================================
+        camera_to_flu = np.array([[ 6.12323400e-17,  0.00000000e+00,  1.00000000e+00,  0.00000000e+00], 
+                                [-1.00000000e+00,  6.12323400e-17,  6.12323400e-17,  0.00000000e+00], 
+                                [-6.12323400e-17, -1.00000000e+00,  3.74939946e-33,  0.00000000e+00], 
+                                [ 0.00000000e+00,  0.00000000e+00,  0.00000000e+00,  1.00000000e+00]])
+        flu_coords = np.dot(camera_to_flu, camera_coords)
+        #==========================================================================================================
+
+
+        #======================FLU to ENU==========================================================================
+        # _, _, yaw = to_euler_angles(self.current_pose.pose.orientation.x, self.current_pose.pose.orientation.y, self.current_pose.pose.orientation.z, self.current_pose.pose.orientation.w)
+        _, _, yaw = to_euler_angles(self.imu.orientation.x, self.imu.orientation.y, self.imu.orientation.z, self.imu.orientation.w)
+        enu_rotation = np.array([[np.cos(yaw), -np.sin(yaw), 0], [np.sin(yaw), np.cos(yaw), 0], [0, 0, 1]])
+        enu_translation = np.array([0, 0, 0])
+
+        flu_to_enu = np.eye(4)
+        flu_to_enu[:3, :3] = enu_rotation
+        flu_to_enu[:3, 3] = enu_translation
+
+        enu_coords = np.dot(flu_to_enu, flu_coords)
+
+        #=======================ENU to Local position==============================================================
+        # enu_coords[:, 0] += self.current_pose.pose.position.x
+        # enu_coords[:, 1] += self.current_pose.pose.position.y
+        # enu_coords[:, 2] += self.current_pose.pose.position.z
+
+        # rospy.loginfo(f"GPS: {self.current_pose.pose.position.x}, {self.current_pose.pose.position.y}, {self.current_pose.pose.position.z}")
+        # rospy.loginfo(f"home_coord: {final_coord_x}, {final_coord_y}, {final_coord_z}")
+
+        #======================FAKE==========================================
+        # self.KF.predict()
+        # z = np.array([[enu_coord[0]], [enu_coord[1]], [enu_coord[2]]])
+        # enu_coord[0:3] =self.KF.update(z).flatten()
+        # rospy.loginfo(f"enu_coord: {enu_coord[0:3]}")
+        #====================================================================
+
+        return enu_coords
+    
     def get_2d_coord(self, position):
         # inverse tf of get_3d_coord
         #=============================Local to ENU coordinate(drone position)===============
