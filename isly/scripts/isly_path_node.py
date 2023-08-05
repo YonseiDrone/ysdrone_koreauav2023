@@ -85,9 +85,9 @@ class IslyPath(object):
 
             #=====================================LOCAL COORDINATE=======================================================
             self.destination_positions = [
-                (self.destination_3_pose.point.x, self.destination_3_pose.point.y, self.destination_z),
-                (self.destination_2_pose.point.x, self.destination_2_pose.point.y, self.destination_z),
-                (self.destination_1_pose.point.x, self.destination_1_pose.point.y, self.destination_z)
+                (65, -41, 10),
+                (34, -16, 15),
+                (0, 0, 15)
             ]
             #rospy.loginfo(f"Waypoint 1 - x: {self.destination_1_pose.point.x}, y: {self.destination_1_pose.point.y}, z: {self.destination_z}")
             #rospy.loginfo(f"Waypoint 2 - x: {self.destination_2_pose.point.x}, y: {self.destination_2_pose.point.y}, z: {self.destination_z}")

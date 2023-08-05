@@ -76,6 +76,7 @@ def lim_z_vel(var, val):
     return var
 #====================================================================
 
+
 class ControlClass(object):
     def __init__(self):
         self.current_state = State()
@@ -89,6 +90,9 @@ class ControlClass(object):
         self.desired_landing = PositionTarget()
         self.mission_num = Float32()
         self.RL_target_vel = Twist()
+        self.launch_setposition = PoseStamped()
+        self.launch_setposition_marker = Marker()
+        self.launch_setposition_marker_array = MarkerArray()
     
         #Subscriber
         self.state_sub = rospy.Subscriber('/mavros/state', State, self.state_cb)
@@ -97,6 +101,7 @@ class ControlClass(object):
         self.isly_destination_command_sub = rospy.Subscriber('/isly_destination_command', PoseStamped, self.isly_destination_command_cb)
         self.desired_landing_sub = rospy.Subscriber('/desired_landing', PositionTarget, self.desired_landing_cb)
         self.RL_target_vel_sub = rospy.Subscriber('/landing_velocity', Twist, self.RL_target_vel_cb)
+        self.launch_setposition_sub = rospy.Subscriber('/launch_setposition', PoseStamped, self.launch_setposition_cb)
 
         #Publisher
         self.target_pose_pub = rospy.Publisher('/mavros/setpoint_position/local', PoseStamped, queue_size=1)
@@ -106,6 +111,21 @@ class ControlClass(object):
         
         self.mission_pub = rospy.Publisher('/mission', Float32, queue_size=1)
     
+    def launch_setposition_cb(self, msg):
+        self.launch_setposition = msg
+        self.launch_setposition_marker.pose.position.x = msg.pose.position.x
+        self.launch_setposition_marker.pose.position.y = msg.pose.position.y
+        self.launch_setposition_marker.pose.position.z = msg.pose.position.z
+        self.launch_setposition_marker_array.markers.clear()
+        self.launch_setposition_marker_array.markers.append(self.launch_setposition_marker)
+        self.launch_setposition.pose.position.x = msg.pose.position.x
+        self.launch_setposition.pose.position.y = msg.pose.position.y
+        self.launch_setposition.pose.position.z = msg.pose.position.z
+        self.launch_setposition.pose.orientation.x = msg.pose.orientation.x
+        self.launch_setposition.pose.orientation.y = msg.pose.orientation.y
+        self.launch_setposition.pose.orientation.z = msg.pose.orientation.z
+        self.launch_setposition.pose.orientation.w = msg.pose.orientation.w
+
     def desired_landing_cb(self, msg):
         self.desired_landing.coordinate_frame = PositionTarget.FRAME_LOCAL_NED
         self.desired_landing.type_mask = PositionTarget.IGNORE_AFX | PositionTarget.IGNORE_AFY | PositionTarget.IGNORE_AFZ | PositionTarget.IGNORE_PX | PositionTarget.IGNORE_PY | PositionTarget.IGNORE_PZ
@@ -196,7 +216,7 @@ class ControlClass(object):
         # Mission 1(Obstacle Avoidance Planner)
         if self.cmd_state == 1:
             self.avoidance_pos_pub.publish(self.destination_command_marker_array)
-            rospy.loginfo(f"{self.destination_command_marker_array}")
+            #rospy.loginfo(f"{self.destination_command_marker_array}")
             rospy.loginfo(f'Target Waypoint - x :{self.destination_command_marker.pose.position.x}, y :{self.destination_command_marker.pose.position.y}, z :{self.destination_command_marker.pose.position.z}')
 
         # Mission 2(Building Searching)
@@ -210,15 +230,10 @@ class ControlClass(object):
         if self.cmd_state == 3:
             self.mission_num.data = self.cmd_state
             self.mission_pub.publish(self.mission_num)
-            self.target_pose.pose.position.x = rospy.get_param('/destination_3_pose_x') - 1.0
-            self.target_pose.pose.position.y = rospy.get_param('/destination_3_pose_y')
-            self.target_pose.pose.position.z = rospy.get_param('/destination_z') + 1.5
-            qx, qy, qz, qw = to_quaternion(180*math.pi/180, 0, 0)
-            self.target_pose.pose.orientation.x = qx
-            self.target_pose.pose.orientation.y = qy
-            self.target_pose.pose.orientation.z = qz
-            self.target_pose.pose.orientation.w = qw
-            self.target_pose_pub.publish(self.target_pose) 
+            rospy.set_param('/local_planner_node/obstacle_cost_param_', 1)
+
+            self.target_pose_pub.publish(self.launch_setposition)
+            self.avoidance_pos_pub.publish(self.launch_setposition_marker_array) 
             rospy.loginfo(f"Mission published to [Cross Detection] data: {self.mission_num.data}")
 
 
