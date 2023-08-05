@@ -257,14 +257,13 @@ class MarkerDetection(object):
                                     [0.0, 0.0, 1.0]])
         
         pixels = np.array(pixels).astype(np.int)
-        depth_frame = depth_frame
         distances = depth_frame[pixels[:, 1], pixels[:, 0]] * 0.001
 
         #=====================Image to Camera======================================================================
         camera_coords = np.ones(len(distances, 4))
         camera_coords[:, 2] = distances
-        camera_coords[:, 0] = (pixels[:, 0] - intrinsic_matrix[0,2]) * camera_coords[:, 2] / intrinsic_matrix[0, 0] #x
-        camera_coords[:, 1] = (pixels[:, 1] - intrinsic_matrix[1,2]) * camera_coords[:, 2] / intrinsic_matrix[1, 1] #y
+        camera_coords[:, 0] = (pixels[:, 0] - intrinsic_matrix[0, 2]) * camera_coords[:, 2] / intrinsic_matrix[0, 0] #x
+        camera_coords[:, 1] = (pixels[:, 1] - intrinsic_matrix[1, 2]) * camera_coords[:, 2] / intrinsic_matrix[1, 1] #y
         #==========================================================================================================
 
         #=====================Camera to FLU========================================================================
