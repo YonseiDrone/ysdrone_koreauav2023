@@ -1,6 +1,6 @@
 #! /usr/bin/env python3
 import rospy
-
+from std_msgs.msg import Float32
 from mavros_msgs.msg import State 
 from mavros_msgs.srv import CommandBool, SetMode
 from geometry_msgs.msg import PoseStamped
@@ -16,6 +16,7 @@ class SetmodeClass(object):
         #Subscriber
         self.state_sub = rospy.Subscriber("/mavros/state", State, self.state_cb)
         self.pose_sub = rospy.Subscriber("/mavros/local_position/pose", PoseStamped, self.pose_cb)
+        self.mission_sub = rospy.Subscriber("/mission", Float32, self.mission_cb)
         
         self.target_pose_pub = rospy.Publisher("/mavros/setpoint_position/local", PoseStamped, queue_size=1)
         #Service
@@ -39,6 +40,11 @@ class SetmodeClass(object):
             rospy.loginfo(f"Current Mode : {self.current_state.mode}")
         if self.current_state.armed != prev_state.armed:
             rospy.loginfo(f"Vehicle armed : {self.current_state.armed}")
+            
+    def mission_cb(self, msg):
+        if msg.data == 11:
+            rospy.loginfo(f"Disarming activated")
+            self.land()
 
     def setMode(self, mode):
         rospy.logerr('Mode Changed')
@@ -71,14 +77,16 @@ class SetmodeClass(object):
 
     def land(self):
         try:
-            response = self.set_mode_client(base_mode = 0, custom_mode = "LAND")
+            response = self.set_mode_client(base_mode = 0, custom_mode = "AUTO.LAND")
         except rospy.ServiceException as e:
             rospy.loginfo("Service call failed : %s" %e)
         rospy.loginfo("Landing...")
-        # wait until the drone is disarmed
-        while self.current_state.armed:
-            rospy.sleep(1)
-            rospy.loginfo("Disarming...")
+        if response.mode_sent:
+            # wait until the drone is disarmed
+            while self.current_state.armed:
+                rospy.loginfo("Disarming...")
+                self.arming_client(False)
+                rospy.sleep(1)
         rospy.loginfo("Landed")
 
 

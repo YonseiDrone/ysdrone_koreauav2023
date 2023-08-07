@@ -41,7 +41,11 @@ void BuildingSearch::command(const ros::TimerEvent& event)
 {
     if(last_goal_reached)
     {
-	    ROS_INFO("Last goal reached! srv_mode: %d, mission: %d", srv_mode, mission);
+        if(!init_mission_sub) {
+	        ROS_INFO("Last goal reached! current mission #%d", srv_mode);
+            ROS_INFO("Building search Ready", srv_mode, mission);
+            init_mission_sub = true;
+        }
         // Auto Mode    or
         // Service Mode => Is request.command same as buidling search mission number?
         if(!srv_mode || mission == building_search_mission)
@@ -256,11 +260,6 @@ void BuildingSearch::cloud_cb(const sensor_msgs::PointCloud2ConstPtr& input)
 void BuildingSearch::mission_cb(const std_msgs::Float32::ConstPtr &msg)
 {
     mission = msg->data;
-    if(!init_mission_sub)
-    {
-        ROS_INFO("[Building Search] Mission set to %d", mission);
-        init_mission_sub = true;
-    }
 }
 
 // Stay in last goal position but turn yaw to target
