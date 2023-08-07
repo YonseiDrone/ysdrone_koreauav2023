@@ -37,6 +37,22 @@ Offboard 모드에서 드론을 제어하기 위한 패키지로 Service를 통�
 - [ ] 실제에서 테스트 및 주변 오브젝트 처리
 - [ ] 카메라 FOV가 안나오는 경우 디버깅(정밀도 향상)
 
+## YOLO_cross_marker_detection
+
+Requirements:
+PX4-Avoidance 패키지 안에 (PX4-Avoidance/local_planner/src/nodes/local_planner_nodelet.cpp)의 90번째 줄의 토픽 이름 변경(/mavros/setpoint_position/local -> /avoidance/setpoint_position/local)
+
+### Files
+- [src](yolo_cross_detection/scripts/)
+  - [yolo_tf_node.py](yolo_cross_detection/scripts/yolo_tf_node.py):
+    1) building search 패키지에서 받은 centeroid를 기준으로 원주비행
+    2) 십자가 마커 인식 시 정지 후 setpoint 계산
+       2-1) Yolo를 통해 십자가 인식 후 픽셀 좌표계 기준 bounding box 값들을 받아옴
+       2-2) bounding box 내에서 픽셀들을 sampling
+       2-3) Coordinate Transformation(pixel coordinate -> ENU coordinate)
+    3) setpoint로 천천히 접근
+
+
 ## safety_landing
 
 마지막 경로점에 도달하여 Safety Landing하기 위한 패키지. PID 방식과 RL 방식으로 구성됨.
