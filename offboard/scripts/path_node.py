@@ -90,7 +90,7 @@ class PathClass(object):
             self.destination_positions = [
                 (0, 0, 15),
                 (34, -16, 15),
-                (65, -41, 10)
+                (65, -47, 10)
             ]
             #rospy.loginfo(f"Waypoint 1 - x: {self.destination_1_pose.point.x}, y: {self.destination_1_pose.point.y}, z: {self.destination_z}")
             #rospy.loginfo(f"Waypoint 2 - x: {self.destination_2_pose.point.x}, y: {self.destination_2_pose.point.y}, z: {self.destination_z}")
