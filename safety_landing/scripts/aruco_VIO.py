@@ -150,23 +150,20 @@ class ImageToDistance:
         self.filtered_xy_pub = rospy.Publisher("/filtered_xy", Point, queue_size=1)
 
         # Subscriber
+        self.image_sub = rospy.Subscriber('/stereo/left/image_raw', Image, self.image_to_distance_cb)
         self.state_sub = rospy.Subscriber("/mavros/state", State, self.state_cb)
         self.pose_sub = rospy.Subscriber("/mavros/local_position/pose", PoseStamped, self.pose_cb)
         self.imu_sub = rospy.Subscriber("/mavros/imu/data", Imu, self.imu_cb)
         # cameraMatrix and distortion coefficents
         # Camera intrinsic matrix [[f_x, 0, c_x], [0, f_y, c_y], [0, 0, 1]]
-        self.cameraMatrix = np.array([[653.054314, 0. , 640.0], [ 0.0 , 653.054314, 360.0], [0.0 , 0.0 , 1.0]])
-        self.distortion = np.array([[-0.250806, 0.065280, 0.001852, -0.000407]])
+        self.cameraMatrix = np.array([[238.3515418007097, 0. , 200.5], [ 0.0 , 238.3515418007097, 200.5], [0.0 , 0.0 , 1.0]])
+        self.distortion = np.array([[0.0, 0.0, 0.0, 0.0]])
         
         # aruco basic setting
         self.aruco_dict = aruco.getPredefinedDictionary(aruco.DICT_6X6_50)
         self.parameters = cv2.aruco.DetectorParameters()
         self.detector = cv2.aruco.ArucoDetector(self.aruco_dict, self.parameters)
         #========================================================================================================
-        self.cap = cv2.VideoCapture(0)
-        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
-        self.cap.set(cv2.CAP_PROP_EXPOSURE, -10)
 
     def state_cb(self, msg):
         self.current_state = msg
@@ -178,11 +175,13 @@ class ImageToDistance:
         self.imu_data = msg 
 
     def image_to_distance_cb(self, data):
-       
-        ret, cv_image = self.cap.read()
-        height, width, _ = cv_image.shape
+        try:
+            # transform ROS image message into opencv image
+            cv_image = self.bridge.imgmsg_to_cv2(data, "bgr8")
+        except CvBridgeError as e:
+            print(e)
 
-        marker_size = 0.325
+        marker_size = 1
         objp = np.array([[0, 0, 0], [0, marker_size, 0], [marker_size, marker_size, 0], [marker_size, 0, 0]], dtype=np.float32)
 
         # hese parameters include things like marker detection thresholds, corner refinement methods, and adaptive thresholding parameters
@@ -292,7 +291,6 @@ if __name__ == "__main__":
         while not rospy.is_shutdown() and not vision_kalman_filter_node_handler.current_state.connected:
             rate.sleep()
         rospy.loginfo("aruco VIO node : FCU connected")
-        rospy.Timer(rospy.Duration(0.1), vision_kalman_filter_node_handler.image_to_distance_cb)
 
         rospy.spin()
     except KeyboardInterrupt:

@@ -117,9 +117,11 @@ class ControlClass(object):
 
     def avoidance_pos_cb(self, msg):
         self.avoidance = msg
+        if self.cmd_state in [1,2,4,5]:
+            self.target_pose_pub.publish(self.avoidance)
         if self.cmd_state==3:
             self.avoidance = self.launch_setposition
-        self.target_pose_pub.publish(self.avoidance)
+            self.target_pose_pub.publish(self.avoidance)
     
     def launch_setposition_cb(self, msg):
         self.launch_setposition = msg
