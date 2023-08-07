@@ -42,8 +42,8 @@ class SetmodeClass(object):
 
     def setMode(self, mode):
         rospy.logerr('Mode Changed')
-        rate = rospy.Rate(10)
-        for _ in range(20):
+        rate = rospy.Rate(5)
+        for _ in range(60):
             self.target_pose.pose.position.x = 0
             self.target_pose.pose.position.y = 0
             self.target_pose.pose.position.z = 0
