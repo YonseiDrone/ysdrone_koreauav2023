@@ -96,6 +96,10 @@ class ControlClass(object):
         self.launch_setposition_marker_array = MarkerArray()
         self.dynamic_client = Client('/local_planner_node', timeout=30)
         self.avoidance = PoseStamped()
+        self.building_target = PoseStamped()
+        self.building_target_marker = Marker()
+        self.building_target_marker_array = MarkerArray()
+
     
         #Subscriber
         self.state_sub = rospy.Subscriber('/mavros/state', State, self.state_cb)
@@ -106,6 +110,7 @@ class ControlClass(object):
         self.RL_target_vel_sub = rospy.Subscriber('/landing_velocity', Twist, self.RL_target_vel_cb)
         self.launch_setposition_sub = rospy.Subscriber('/launch_setposition', PoseStamped, self.launch_setposition_cb)
         self.avoidance_pos_sub = rospy.Subscriber('/avoidance/setpoint_position/local', PoseStamped, self.avoidance_pos_cb)
+        self.building_target_sub = rospy.Subscriber('/building/search/target_pose', PoseStamped, self.building_target_cb)
 
         #Publisher
         self.target_pose_pub = rospy.Publisher('/mavros/setpoint_position/local', PoseStamped, queue_size=1)
@@ -117,12 +122,32 @@ class ControlClass(object):
 
     def avoidance_pos_cb(self, msg):
         self.avoidance = msg
-        if self.cmd_state in [1,2,4,5]:
+        if self.cmd_state in [1,4,5]:
             self.target_pose_pub.publish(self.avoidance)
-        if self.cmd_state==3:
+
+        elif self.cmd_state == 2:
+            self.avoidance = self.building_target
+            self.target_pose_pub.publish(self.avoidance)
+
+        elif self.cmd_state==3:
             self.avoidance = self.launch_setposition
             self.target_pose_pub.publish(self.avoidance)
-    
+
+    def building_target_cb(self, msg):
+        self.building_target = msg
+        self.building_target_marker.pose.position.x = msg.pose.position.x
+        self.building_target_marker.pose.position.y = msg.pose.position.y
+        self.building_target_marker.pose.position.z = msg.pose.position.z
+        self.building_target_marker_array.markers.clear()
+        self.building_target_marker_array.markers.append(self.building_target_marker)
+        self.building_target.pose.position.x = msg.pose.position.x
+        self.building_target.pose.position.y = msg.pose.position.y
+        self.building_target.pose.position.z = msg.pose.position.z
+        self.building_target.pose.orientation.x = msg.pose.orientation.x
+        self.building_target.pose.orientation.y = msg.pose.orientation.y
+        self.building_target.pose.orientation.z = msg.pose.orientation.z
+        self.building_target.pose.orientation.w = msg.pose.orientation.w
+
     def launch_setposition_cb(self, msg):
         self.launch_setposition = msg
         self.launch_setposition_marker.pose.position.x = msg.pose.position.x
@@ -190,7 +215,10 @@ class ControlClass(object):
     def cmdreact_cb(self, req):
         self.cmd_state = req.command
         self.resp = DroneCommandResponse()
-        if self.cmd_state == 1:
+        if self.cmd_state == 0:
+            self.resp.mode = 'Takeoff Mode'
+            self.resp.res = True
+        elif self.cmd_state == 1:
             self.resp.mode = 'Avoidance Mode'
             self.resp.res = True
         elif self.cmd_state == 2:
@@ -226,6 +254,15 @@ class ControlClass(object):
     def main_controller(self, e):
         self.time_now = rospy.Time.now()
 
+        # Mission 0(Take off)
+        if self.cmd_state == 0:
+            self.target_pose.pose.position.x = 0
+            self.target_pose.pose.position.y = 0
+            self.target_pose.pose.position.z = 3 #rospy.get_param('destination_z')?
+            self.target_pose_pub.publish(self.target_pose)
+            rospy.loginfo(f"Takeoff")
+
+
         # Mission 1(Obstacle Avoidance Planner)
         if self.cmd_state == 1:
             new_config = {"obstacle_cost_param_": 5}
@@ -238,6 +275,7 @@ class ControlClass(object):
         if self.cmd_state == 2:
             self.mission_num.data = self.cmd_state
             self.mission_pub.publish(self.mission_num)
+            self.avoidance_pos_pub.publish(self.building_target_marker_array)
             rospy.loginfo(f"Mission published to [Building Search] data: {self.mission_num.data}")
 
         

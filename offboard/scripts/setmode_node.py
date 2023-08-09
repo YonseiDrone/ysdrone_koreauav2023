@@ -40,6 +40,7 @@ class SetmodeClass(object):
         if self.current_state.armed != prev_state.armed:
             rospy.loginfo(f"Vehicle armed : {self.current_state.armed}")
 
+
     def setMode(self, mode):
         rospy.logerr('Mode Changed')
         rate = rospy.Rate(10)

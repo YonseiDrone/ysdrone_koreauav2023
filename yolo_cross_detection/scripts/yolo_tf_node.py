@@ -347,9 +347,9 @@ class MarkerDetection(object):
     
                     setpoint = np.mean(np.array(self.setpoint_list)[16: , :], axis=0)
 
-                    setpoint[0] = self.current_pose.pose.position.x + (setpoint[0] - self.current_pose.pose.position.x)*0.05
-                    setpoint[1] = self.current_pose.pose.position.y + (setpoint[1] - self.current_pose.pose.position.y)*0.05
-                    setpoint[2] = self.current_pose.pose.position.z + (setpoint[2] - self.current_pose.pose.position.z)*0.05
+                    setpoint[0] = self.current_pose.pose.position.x + (setpoint[0] - self.current_pose.pose.position.x)*0.1
+                    setpoint[1] = self.current_pose.pose.position.y + (setpoint[1] - self.current_pose.pose.position.y)*0.1
+                    setpoint[2] = self.current_pose.pose.position.z + (setpoint[2] - self.current_pose.pose.position.z)*0.1
                     rospy.loginfo(f"Mean setpoint: {setpoint}")
                     self.target_pose.pose.position.x = setpoint[0]
                     self.target_pose.pose.position.y = setpoint[1]

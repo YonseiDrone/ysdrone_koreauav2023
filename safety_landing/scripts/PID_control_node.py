@@ -101,7 +101,7 @@ class PIDControl:
             self.desired_landing.velocity.y = 0
             self.desired_landing.velocity.z = -0.3
             self.desired_landing_pub.publish(self.desired_landing)
-            rospy.loginfo("Warning: self.relative_dis.data has less than 3 elements. Skipping this cycle")
+            #rospy.loginfo("Warning: self.relative_dis.data has less than 3 elements. Skipping this cycle")
             return
 
         #Compute PID

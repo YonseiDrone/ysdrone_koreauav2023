@@ -4,7 +4,8 @@
 
 	<node pkg="offboard" type="setmode_node.py" name="setmode_node" required="true" output="screen"/>
 
-	<node pkg="building_search" type="building_search_node" name="building_search_node" required="true" output="screen"/>
+	<!--<node pkg="building_search" type="building_search_node" name="building_search_node" required="true" output="screen"/>-->
+	<node pkg="building_search" type="building_search_python_node.py" name="building_search_python_node" required="true" output="screen"/>
 
 	<node pkg="yolo_cross_detection" type="yolo_node.py" name="yolo_node" output="screen" />
 
