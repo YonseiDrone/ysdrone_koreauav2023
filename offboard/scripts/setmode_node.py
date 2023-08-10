@@ -49,12 +49,12 @@ class SetmodeClass(object):
     def setMode(self, mode):
         rospy.logerr('Mode Changed')
         rate = rospy.Rate(5)
-        for _ in range(60):
-            self.target_pose.pose.position.x = 0
-            self.target_pose.pose.position.y = 0
-            self.target_pose.pose.position.z = 0
-            self.target_pose_pub.publish(self.target_pose)
-            rate.sleep()
+        # for _ in range(20):
+        #     self.target_pose.pose.position.x = 0
+        #     self.target_pose.pose.position.y = 0
+        #     self.target_pose.pose.position.z = 0
+        #     self.target_pose_pub.publish(self.target_pose)
+        #     rate.sleep()
         try:
             response = self.set_mode_client(base_mode = 0, custom_mode = mode)
             # return response.mode_sent

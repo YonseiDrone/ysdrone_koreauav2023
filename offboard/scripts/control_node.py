@@ -191,7 +191,10 @@ class ControlClass(object):
     def cmdreact_cb(self, req):
         self.cmd_state = req.command
         self.resp = DroneCommandResponse()
-        if self.cmd_state == 1:
+        if self.cmd_state == 0:
+            self.resp.mode = "Takeoff Mode"
+            self.resp.res = True
+        elif self.cmd_state == 1:
             self.resp.mode = 'Avoidance Mode'
             self.resp.res = True
         elif self.cmd_state == 2:
@@ -229,13 +232,17 @@ class ControlClass(object):
     
     def main_controller(self, e):
         self.time_now = rospy.Time.now()
-
+        if self.cmd_state == 0:
+            self.target_pose.pose.position.x = 0
+            self.target_pose.pose.position.y = 0
+            self.target_pose.pose.position.z = 3
+            self.target_pose_pub.publish(self.target_pose)
         # Mission 1(Obstacle Avoidance Planner)
         if self.cmd_state == 1:
             new_config = {"obstacle_cost_param_": 5}
             config = self.dynamic_client.update_configuration(new_config)
             self.avoidance_pos_pub.publish(self.destination_command_marker_array)
-            # rospy.loginfo(f"{self.destination_command_marker_array}")
+            rospy.loginfo(f"{self.destination_command_marker_array}")
             rospy.loginfo(f'Target Waypoint - x :{self.destination_command_marker.pose.position.x}, y :{self.destination_command_marker.pose.position.y}, z :{self.destination_command_marker.pose.position.z}')
 
         # Mission 2(Building Searching)
@@ -249,7 +256,7 @@ class ControlClass(object):
         if self.cmd_state == 3:
             self.mission_num.data = self.cmd_state
             self.mission_pub.publish(self.mission_num)
-            new_config = {"obstacle_cost_param_": 1.5}
+            new_config = {"obstacle_cost_param_": 1}
             config = self.dynamic_client.update_configuration(new_config)
 
             self.avoidance_pos_pub.publish(self.launch_setposition_marker_array) 

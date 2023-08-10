@@ -9,8 +9,9 @@ from cv_bridge import CvBridge, CvBridgeError
 from ysdrone_msgs.srv import *
 from geometry_msgs.msg import Point
 import message_filters
-import math
+import math, time
 from geometry_msgs.msg import PoseStamped
+from visualization_msgs.msg import Marker
 from mavros_msgs.msg import State
 from std_msgs.msg import Float32
 import pandas, time
@@ -66,8 +67,8 @@ class MarkerDetection(object):
                         [0.0, 0.0, 1.0]])
 
         #setpoint
-        self.offset = 2.5 # Distance from the cross marker
-        self.circular_speed = 0.1 # unit: [rad]
+        self.offset = 4 # Distance from the cross marker
+        self.circular_speed = 0.2 # unit: [rad]
 
         self.current_state = State()
         self.current_pose = PoseStamped()
@@ -84,6 +85,7 @@ class MarkerDetection(object):
         self.pose_sub = rospy.Subscriber('/mavros/local_position/pose', PoseStamped, self.pose_cb)
         self.mission_sub = rospy.Subscriber('/mission', Float32, self.mission_cb)
         self.imu_sub = rospy.Subscriber('/mavros/imu/data', Imu, self.imu_cb)
+	
 
         # Synchronize the topics
         ts = message_filters.ApproximateTimeSynchronizer([self.rgb_image_sub, self.depth_image_sub], queue_size=10, slop=0.1)
@@ -93,7 +95,8 @@ class MarkerDetection(object):
         self.image_pub = rospy.Publisher('/cross_image', Image, queue_size=1)
         self.final_coord_pub = rospy.Publisher('/marker_position/home', PoseStamped, queue_size=1)
         self.target_pose_pub = rospy.Publisher('/launch_setposition', PoseStamped, queue_size=1)
-    
+    	self.approch_pub = rospyh.Publisher('/approch_target/marker', Marker, queue_size=1)
+
         rospy.on_shutdown(self.visualize)
 
     def visualize(self):
@@ -248,24 +251,7 @@ class MarkerDetection(object):
 
         # drone setpoint
         return cross_pos + normal_vector / np.sqrt(np.sum(normal_vector * normal_vector)) * offset
-
-    # def make_cube_marker(self, pos, color, scale):
-    #     #visualize
-    #     marker = Marker()
-    #     marker.type = Marker.CUBE
-    #     marker.header.frame_id = 'local_origin'
-    #     marker.header.stamp = rospy.Time.now()
-    #     marker.action = Marker.ADD
-    #     marker.scale.x = scale
-    #     marker.scale.y = scale
-    #     marker.scale.z = scale
-    #     marker.color.a = 1.0
-    #     marker.color.r = color[0]
-    #     marker.color.g = color[1]
-    #     marker.color.b = color[2]
-    #     marker.pose.position = Point(pos[0], pos[1], pos[2])
-
-    #     return marker
+    
 
     def image_cb(self, rgb_image, depth_image):
         bridge = CvBridge()
@@ -281,8 +267,8 @@ class MarkerDetection(object):
                 xyxy = None # Initialize xyx with None
                 #========================TODO===================
                 # centroid, radius!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-                radius = 5.5
-                centroid = [rospy.get_param('/destination_3_pose_x') - 8.2, rospy.get_param('/destination_3_pose_y') - 5, 3]
+                radius = 4
+                centroid = [rospy.get_param('/destination_3_pose_x') - 7, rospy.get_param('/destination_3_pose_y') - 6.5, 3]
                 #======================================================
                 if len(self.crosspos_list) < 10:
                     error_yaw = math.atan2(centroid[1] - self.current_pose.pose.position.y, centroid[0] - self.current_pose.pose.position.x)
@@ -297,7 +283,7 @@ class MarkerDetection(object):
                     self.target_pose.pose.orientation.z = qz
                     self.target_pose.pose.orientation.w = qw
                 
-                elif 10<=len(self.crosspos_list)<=25:
+                elif 15<=len(self.crosspos_list)<=20:
                     radius = 5
                     error_yaw = math.atan2(centroid[1] - self.current_pose.pose.position.y, centroid[0] - self.current_pose.pose.position.x)
                     current_angle = error_yaw + math.pi
@@ -315,8 +301,6 @@ class MarkerDetection(object):
                     #==================TODO=====================
                     #Outlier delete
                     setpoint = np.mean(np.array(self.setpoint_list)[16: , :], axis=0)
-	                # marker = self.make_cube_marker(setpoint, (0.0, 0.0, 1.0), 0.4)
-		            # self.approch_pub.publish(marker)
 
                     setpoint[0] = self.current_pose.pose.position.x + (setpoint[0] - self.current_pose.pose.position.x)*0.1
                     setpoint[1] = self.current_pose.pose.position.y + (setpoint[1] - self.current_pose.pose.position.y)*0.1

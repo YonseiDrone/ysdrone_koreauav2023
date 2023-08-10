@@ -1,0 +1,72 @@
+
+<launch>
+  <arg name="fcu_url" default="/dev/ttyS4:921600"/>
+  <!-- <arg name="fcu_url" default="/dev/ttyPixhawk:57600"/> -->
+  <!-- <arg name="fcu_url" default="udp://:14550@192.168.0.100:14551"/> -->
+  <arg name="gcs_url" default="udp://:14560@192.168.0.2:14550" />
+  <arg name="tgt_system" default="1" />
+  <arg name="tgt_component" default="1" />
+  <arg name="pointcloud_topics" default="[/camera/depth/points]"/>
+  <arg name="json_file_path"      default="$(find koreauav2023)/params/stereo_calib.json"/>
+
+  <!-- Launch MavROS -->
+  <include file="$(find mavros)/launch/node.launch">
+    <arg name="pluginlists_yaml" value="$(find mavros)/launch/px4_pluginlists.yaml" />
+    <!-- Need to change the config file to get the tf topic and get local position in terms of local origin -->
+    <arg name="config_yaml" value="$(find avoidance)/resource/px4_config.yaml" />
+    <arg name="fcu_url" value="$(arg fcu_url)" />
+    <arg name="gcs_url" value="$(arg gcs_url)" />
+    <arg name="tgt_system" value="$(arg tgt_system)" />
+    <arg name="tgt_component" value="$(arg tgt_component)" />
+  </include>
+
+  <!-- Launch cameras -->
+  <node pkg="tf" type="static_transform_publisher" name="tf_camera" required="true"
+    args="0.13 0 0.115 0 0 0 fcu camera_link 10"/>
+  <include file="$(find koreauav2023)/launch/rs_depthcloud.launch">
+    <arg name="required"              value="true"/>
+    <arg name="tf_prefix"             value="camera"/>
+    <arg name="enable_color"          value="true" />
+    <arg name="enable_infra1"         value="false" />
+    <arg name="depth_fps"             value="15"/>
+    <arg name="json_file_path"           value="$(arg json_file_path)"/>
+    <arg name="align_depth"           value="true"/>
+  </include>
+
+  <!-- launch node to throttle depth images for logging -->
+  <!-- http://wiki.ros.org/topic_tools/drop -->
+  <!-- <node name="drop_camera_depth" pkg="topic_tools" type="drop" output="screen"
+    args="/camera/depth/image_rect_raw 29 30">
+  </node> -->
+<!--
+  <node name="drop_camera_ir" pkg="topic_tools" type="drop" output="screen"
+    args="/camera/infra1/image_rect_raw 29 30">
+  </node>
+-->
+              <!--  <node name="drop_camera_color" pkg="topic_tools" type="drop" output="screen"
+                      args="/camera/color/image_rect_raw 29 30">
+              </node -->
+
+  <!-- Fix the on/of script for realsense auto-exposure -->
+  <!-- Append to the realsense auto exposure toggling -->
+  <!-- <node name="dynamic_reconfigure_node" pkg="dynamic_reconfigure" type="dynparam" args="set /camera/stereo_module enable_auto_exposure 0" />		 -->
+  <!-- <node name="dynamic_reconfigure_node" pkg="dynamic_reconfigure" type="dynparam" args="set /camera/stereo_module enable_auto_exposure 1" />		 -->
+
+
+  <node name="dynparam" pkg="dynamic_reconfigure" type="dynparam" args="load local_planner_node $(find koreauav2023)/params/vehicle_config.yaml" />
+
+  <!-- Launch avoidance -->
+  <!-- Load custom console configuration -->
+  <env name="ROSCONSOLE_CONFIG_FILE" value="$(find local_planner)/resource/custom_rosconsole.conf"/>
+
+  <!-- Launch local planner -->
+  <node name="local_planner_node" pkg="local_planner" type="local_planner_node" output="screen" required="true" >
+    <param name="goal_x_param" value="0" />
+    <param name="goal_y_param" value="0"/>
+    <param name="goal_z_param" value="3" />
+    <param name="accept_goal_input_topic" value="true" />
+    <rosparam param="pointcloud_topics" subst_value="True">$(arg pointcloud_topics)</rosparam>
+  </node>
+
+  <node pkg="offboard" type="control_node.py" name="control_node" required="true" output="screen"/>
+</launch>

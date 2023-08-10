@@ -2,7 +2,7 @@
 	<param name="/buidling_search_mission" value="2.0"/>
 	<param name="/marker_mission" value="3.0"/>
 
-	<!-- <node pkg="offboard" type="setmode_node.py" name="setmode_node" required="true" output="screen"/> -->
+	<node pkg="offboard" type="setmode_node.py" name="setmode_node" required="true" output="screen"/>
 
 	<!-- <node pkg="building_search" type="building_search_node" name="building_search_node" required="true" output="screen"/> -->
 	<node pkg="yolo_cross_detection" type="yolo_tf_node.py" name="yolo_tf_node" output="screen" />
