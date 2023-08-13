@@ -39,8 +39,7 @@ class RLControl:
         self.z_offset = 0.0
         self.rospack = rospkg.RosPack()
         self.onnxPath = self.rospack.get_path('safety_landing') + '/scripts/DroneLanding-8078831.onnx'
-        self.model = onnxruntime.InferenceSession(self.onnxPath)
-        # self.model.set_providers(['CPUExecutionProvider'])
+        self.model = onnxruntime.InferenceSession(self.onnxPath, providers=['CPUExecutionProvider'])
 
     def relative_dis_cb(self, msg):
         self.relative_dis = msg

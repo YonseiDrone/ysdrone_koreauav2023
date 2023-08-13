@@ -58,9 +58,10 @@ class MarkerDetection(object):
         self.current_state = State()
         self.current_pose = PoseStamped()
         self.final_coord = PoseStamped()
-
         self.imu = Imu()
         self.target_pose = PoseStamped()
+        self.centroid = None
+        self.centroid_list = []
 
         # Subscriber
         self.rgb_image_sub = message_filters.Subscriber('/camera/rgb/image_raw', Image)
@@ -69,6 +70,7 @@ class MarkerDetection(object):
         self.pose_sub = rospy.Subscriber('/mavros/local_position/pose', PoseStamped, self.pose_cb)
         self.mission_sub = rospy.Subscriber('/mission', Float32, self.mission_cb)
         self.imu_sub = rospy.Subscriber('/mavros/imu/data', Imu, self.imu_cb)
+        self.centroid_sub = rospy.Subscriber('/building/search/centroid_pose', PoseStamped, self.centroid_cb)
 
         # Synchronize the topics
         ts = message_filters.ApproximateTimeSynchronizer([self.rgb_image_sub, self.depth_image_sub], queue_size=10, slop=0.1)
@@ -77,9 +79,18 @@ class MarkerDetection(object):
         # Publisher
         self.image_pub = rospy.Publisher('/cross_image', Image, queue_size=1)
         self.approch_pub = rospy.Publisher('/cross_marker_approch', Marker, queue_size=1)
+        self.centroid_pub = rospy.Publisher('/building_centroid', Marker, queue_size=1)
         self.target_pose_pub = rospy.Publisher('/launch_setposition', PoseStamped, queue_size=1)
 
         rospy.on_shutdown(self.visualize)
+
+    def centroid_cb(self, msg):
+        x, y, z = msg.pose.position.x, msg.pose.position.y, msg.pose.position.z
+        center = np.array([x,y,z])
+        self.centroid_list.append(center)    
+        self.centroid = np.mean(self.centroid_list, axis=0)
+        marker = self.make_cube_marker(self.centroid, (0, 255, 0), 0.6)
+        self.centroid_pub.publish(marker)
 
     
     def visualize(self):
@@ -334,12 +345,12 @@ class MarkerDetection(object):
 
                 if len(self.crosspos_list) < 30:
                     radius = 4
-                    error_yaw = math.atan2(-42.9 - self.current_pose.pose.position.y, 71.46 - self.current_pose.pose.position.x)
+                    error_yaw = math.atan2(self.centroid[1] - self.current_pose.pose.position.y, self.centroid[0]- self.current_pose.pose.position.x)
                     current_angle = error_yaw + math.pi
                     qz = math.sin(error_yaw/2.0)
                     qw = math.cos(error_yaw/2.0)
-                    self.target_pose.pose.position.x = 71.46 + radius*math.cos(current_angle + self.circular_speed)
-                    self.target_pose.pose.position.y = -42.9 + radius*math.sin(current_angle + self.circular_speed)
+                    self.target_pose.pose.position.x = self.centroid[0]+ radius*math.cos(current_angle + self.circular_speed)
+                    self.target_pose.pose.position.y = self.centroid[1] + radius*math.sin(current_angle + self.circular_speed)
                     self.target_pose.pose.position.z = 9
                     self.target_pose.pose.orientation.x = 0
                     self.target_pose.pose.orientation.y = 0
@@ -348,12 +359,12 @@ class MarkerDetection(object):
                 
                 elif 30<=len(self.crosspos_list)<=60:
                     radius = 4
-                    error_yaw = math.atan2(-42.9 - self.current_pose.pose.position.y, 71.46 - self.current_pose.pose.position.x)
+                    error_yaw = math.atan2(self.centroid[1] - self.current_pose.pose.position.y, self.centroid[0]- self.current_pose.pose.position.x)
                     current_angle = error_yaw + math.pi
                     qz = math.sin(error_yaw/2.0)
                     qw = math.cos(error_yaw/2.0)
-                    self.target_pose.pose.position.x = 71.46 + radius*math.cos(current_angle)
-                    self.target_pose.pose.position.y = -42.9 + radius*math.sin(current_angle)
+                    self.target_pose.pose.position.x = self.centroid[0]+ radius*math.cos(current_angle)
+                    self.target_pose.pose.position.y = self.centroid[1] + radius*math.sin(current_angle)
                     self.target_pose.pose.position.z = 9
                     self.target_pose.pose.orientation.x = 0
                     self.target_pose.pose.orientation.y = 0

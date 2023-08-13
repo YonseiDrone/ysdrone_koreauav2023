@@ -126,20 +126,13 @@ class ControlClass(object):
             self.target_pose_pub.publish(self.avoidance)
 
         elif self.cmd_state == 2:
-            self.avoidance.pose.orientation.x = self.building_target.pose.orientation.x
-            self.avoidance.pose.orientation.y = self.building_target.pose.orientation.y
-            self.avoidance.pose.orientation.z = self.building_target.pose.orientation.z
-            self.avoidance.pose.orientation.w = self.building_target.pose.orientation.w
+            self.avoidance = self.building_target
             self.target_pose_pub.publish(self.avoidance)
 
-        elif self.cmd_state==3:
-            self.avoidance.pose.orientation.x = self.launch_setposition.pose.orientation.x
-            self.avoidance.pose.orientation.y = self.launch_setposition.pose.orientation.y
-            self.avoidance.pose.orientation.z = self.launch_setposition.pose.orientation.z
-            self.avoidance.pose.orientation.w = self.launch_setposition.pose.orientation.w
-        if self.cmd_state==3:
-            self.avoidance.pose.orientation = self.launch_setposition.pose.orientation
+        elif self.cmd_state == 3:
+            self.avoidance = self.launch_setposition
             self.target_pose_pub.publish(self.avoidance)
+
 
     def building_target_cb(self, msg):
         self.building_target = msg

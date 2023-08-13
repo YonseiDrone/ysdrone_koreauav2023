@@ -1,3 +1,5 @@
+#! /usr/bin/env python3
+
 import rospy, math
 from ysdrone_msgs.srv import *
 from geometry_msgs.msg import PoseStamped
@@ -59,8 +61,8 @@ class BuildingSearch(object):
         # ROS params
         self.srv_mode = rospy.get_param("/srv_mode", True)
         self.building_search_mission = rospy.get_param("/building_search_mission", 2.0)
-        self.last_goal_x = rospy.get_param("/destination_3_pose_x", 65.0)
-        self.last_goal_y = rospy.get_param("/destination_3_pose_y", -43.0)
+        self.last_goal_x = rospy.get_param("/destination_3_pose_x", 80.0)
+        self.last_goal_y = rospy.get_param("/destination_3_pose_y", -41.0)
         self.last_goal_z = rospy.get_param("/destination_z", 15)
 
         # ROS publisher & subscriber
