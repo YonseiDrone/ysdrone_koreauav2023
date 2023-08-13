@@ -235,7 +235,7 @@ class ControlClass(object):
         if self.cmd_state == 0:
             self.target_pose.pose.position.x = 0
             self.target_pose.pose.position.y = 0
-            self.target_pose.pose.position.z = 3
+            self.target_pose.pose.position.z = 3.0
             self.target_pose_pub.publish(self.target_pose)
         # Mission 1(Obstacle Avoidance Planner)
         if self.cmd_state == 1:

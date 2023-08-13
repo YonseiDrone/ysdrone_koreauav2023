@@ -8,6 +8,7 @@ from sensor_msgs.msg import Image, Imu
 from cv_bridge import CvBridge, CvBridgeError
 from ysdrone_msgs.srv import *
 from geometry_msgs.msg import Point
+from visualization_msgs.msg import Marker
 import message_filters
 import math
 from geometry_msgs.msg import PoseStamped
@@ -72,9 +73,10 @@ class MarkerDetection(object):
         self.current_state = State()
         self.current_pose = PoseStamped()
         self.final_coord = PoseStamped()
-
         self.imu = Imu()
         self.target_pose = PoseStamped()
+        self.centroid = None
+        self.centroid_list = []
 
         # Subscriber
         ## RealSense Topics
@@ -84,6 +86,7 @@ class MarkerDetection(object):
         self.pose_sub = rospy.Subscriber('/mavros/local_position/pose', PoseStamped, self.pose_cb)
         self.mission_sub = rospy.Subscriber('/mission', Float32, self.mission_cb)
         self.imu_sub = rospy.Subscriber('/mavros/imu/data', Imu, self.imu_cb)
+        self.centroid_sub = rospy.Subscriber('/building/search/centroid_pose', PoseStamped, self.centroid_cb)
 
         # Synchronize the topics
         ts = message_filters.ApproximateTimeSynchronizer([self.rgb_image_sub, self.depth_image_sub], queue_size=10, slop=0.1)
@@ -91,10 +94,19 @@ class MarkerDetection(object):
 
         # Publisher
         self.image_pub = rospy.Publisher('/cross_image', Image, queue_size=1)
-        self.final_coord_pub = rospy.Publisher('/marker_position/home', PoseStamped, queue_size=1)
+        self.approch_pub = rospy.Publisher('/cross_marker_approch_setpoint', Marker, queue_size=1)
         self.target_pose_pub = rospy.Publisher('/launch_setposition', PoseStamped, queue_size=1)
-    
+        self.centroid_pub = rospy.Publisher('/building_centroid', Marker, queue_size=1)
+
         rospy.on_shutdown(self.visualize)
+
+    def centroid_cb(self, msg):
+        x, y, z = msg.pose.position.x, msg.pose.position.y, msg.pose.position.z
+        center = np.array([x,y,z])
+        self.centroid_list.append(center)    
+        self.centroid = np.mean(self.centroid_list, axis=0)
+        marker = self.make_cube_marker(self.centroid, (0, 255, 0), 0.6)
+        self.centroid_pub.publish(marker)
 
     def visualize(self):
         self.setpoint_list = np.array(self.setpoint_list)
@@ -249,23 +261,23 @@ class MarkerDetection(object):
         # drone setpoint
         return cross_pos + normal_vector / np.sqrt(np.sum(normal_vector * normal_vector)) * offset
 
-    # def make_cube_marker(self, pos, color, scale):
-    #     #visualize
-    #     marker = Marker()
-    #     marker.type = Marker.CUBE
-    #     marker.header.frame_id = 'local_origin'
-    #     marker.header.stamp = rospy.Time.now()
-    #     marker.action = Marker.ADD
-    #     marker.scale.x = scale
-    #     marker.scale.y = scale
-    #     marker.scale.z = scale
-    #     marker.color.a = 1.0
-    #     marker.color.r = color[0]
-    #     marker.color.g = color[1]
-    #     marker.color.b = color[2]
-    #     marker.pose.position = Point(pos[0], pos[1], pos[2])
+    def make_cube_marker(self, pos, color, scale):
+        #visualize
+        marker = Marker()
+        marker.type = Marker.CUBE
+        marker.header.frame_id = 'local_origin'
+        marker.header.stamp = rospy.Time.now()
+        marker.action = Marker.ADD
+        marker.scale.x = scale
+        marker.scale.y = scale
+        marker.scale.z = scale
+        marker.color.a = 1.0
+        marker.color.r = color[0]
+        marker.color.g = color[1]
+        marker.color.b = color[2]
+        marker.pose.position = Point(pos[0], pos[1], pos[2])
 
-    #     return marker
+        return marker
 
     def image_cb(self, rgb_image, depth_image):
         bridge = CvBridge()
@@ -282,16 +294,16 @@ class MarkerDetection(object):
                 #========================TODO===================
                 # centroid, radius!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
                 radius = 5.5
-                centroid = [rospy.get_param('/destination_3_pose_x') - 8.2, rospy.get_param('/destination_3_pose_y') - 5, 3]
+
                 #======================================================
                 if len(self.crosspos_list) < 10:
-                    error_yaw = math.atan2(centroid[1] - self.current_pose.pose.position.y, centroid[0] - self.current_pose.pose.position.x)
+                    error_yaw = math.atan2(self.centroid[1] - self.current_pose.pose.position.y, self.centroid[0] - self.current_pose.pose.position.x)
                     current_angle = error_yaw + math.pi
                     qz = math.sin(error_yaw/2.0)
                     qw = math.cos(error_yaw/2.0)
-                    self.target_pose.pose.position.x = centroid[0] + radius*math.cos(current_angle + self.circular_speed)
-                    self.target_pose.pose.position.y = centroid[1] + radius*math.sin(current_angle + self.circular_speed)
-                    self.target_pose.pose.position.z = centroid[2]
+                    self.target_pose.pose.position.x = self.centroid[0] + radius*math.cos(current_angle + self.circular_speed)
+                    self.target_pose.pose.position.y = self.centroid[1] + radius*math.sin(current_angle + self.circular_speed)
+                    self.target_pose.pose.position.z = self.centroid[2]
                     self.target_pose.pose.orientation.x = 0
                     self.target_pose.pose.orientation.y = 0
                     self.target_pose.pose.orientation.z = qz
@@ -299,13 +311,13 @@ class MarkerDetection(object):
                 
                 elif 10<=len(self.crosspos_list)<=25:
                     radius = 5
-                    error_yaw = math.atan2(centroid[1] - self.current_pose.pose.position.y, centroid[0] - self.current_pose.pose.position.x)
+                    error_yaw = math.atan2(self.centroid[1] - self.current_pose.pose.position.y, self.centroid[0] - self.current_pose.pose.position.x)
                     current_angle = error_yaw + math.pi
                     qz = math.sin(error_yaw/2.0)
                     qw = math.cos(error_yaw/2.0)
-                    self.target_pose.pose.position.x = centroid[0] + radius*math.cos(current_angle)
-                    self.target_pose.pose.position.y = centroid[1] + radius*math.sin(current_angle)
-                    self.target_pose.pose.position.z = centroid[2]
+                    self.target_pose.pose.position.x = self.centroid[0] + radius*math.cos(current_angle)
+                    self.target_pose.pose.position.y = self.centroid[1] + radius*math.sin(current_angle)
+                    self.target_pose.pose.position.z = self.centroid[2]
                     self.target_pose.pose.orientation.x = 0
                     self.target_pose.pose.orientation.y = 0
                     self.target_pose.pose.orientation.z = qz
@@ -315,8 +327,8 @@ class MarkerDetection(object):
                     #==================TODO=====================
                     #Outlier delete
                     setpoint = np.mean(np.array(self.setpoint_list)[16: , :], axis=0)
-	                # marker = self.make_cube_marker(setpoint, (0.0, 0.0, 1.0), 0.4)
-		            # self.approch_pub.publish(marker)
+                    marker = self.make_cube_marker(setpoint, (0.0, 0.0, 1.0), 0.4)
+                    self.approch_pub.publish(marker)
 
                     setpoint[0] = self.current_pose.pose.position.x + (setpoint[0] - self.current_pose.pose.position.x)*0.1
                     setpoint[1] = self.current_pose.pose.position.y + (setpoint[1] - self.current_pose.pose.position.y)*0.1
