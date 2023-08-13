@@ -10,7 +10,8 @@ from ysdrone_msgs.srv import *
 from geometry_msgs.msg import Point
 import message_filters
 import math, time
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PoseStamped, Point
+from visualization_msgs.msg import Marker
 from mavros_msgs.msg import State
 from std_msgs.msg import Float32
 import matplotlib.pyplot as plt
@@ -75,7 +76,7 @@ class MarkerDetection(object):
 
         # Publisher
         self.image_pub = rospy.Publisher('/cross_image', Image, queue_size=1)
-        self.final_coord_pub = rospy.Publisher('/marker_position/home', PoseStamped, queue_size=1)
+        self.approch_pub = rospy.Publisher('/cross_marker_approch', Marker, queue_size=1)
         self.target_pose_pub = rospy.Publisher('/launch_setposition', PoseStamped, queue_size=1)
 
         rospy.on_shutdown(self.visualize)
@@ -101,7 +102,6 @@ class MarkerDetection(object):
         df['cross_y'] = cross_y
         df['cross_z'] = cross_z
         df.to_csv('~/Downloads/3d.csv')
-
 
     def mission_cb(self, msg):
         self.mission = msg.data
@@ -277,8 +277,8 @@ class MarkerDetection(object):
         x_start, y_start = left_top
         x_end, y_end = right_bottom
 
-        for x in range(x_start, x_end + 1, interval):
-            for y in range(y_start, y_end + 1, interval):
+        for x in range(x_start, x_end, interval):
+            for y in range(y_start, y_end, interval):
                 result.append((x, y))
 
         return result
@@ -302,6 +302,24 @@ class MarkerDetection(object):
         # drone setpoint
         return cross_pos + normal_vector / np.sqrt(np.sum(normal_vector * normal_vector)) * offset
 
+    def make_cube_marker(self, pos, color, scale):
+        #visualize
+        marker = Marker()
+        marker.type = Marker.CUBE
+        marker.header.frame_id = 'local_origin'
+        marker.header.stamp = rospy.Time.now()
+        marker.action = Marker.ADD
+        marker.scale.x = scale
+        marker.scale.y = scale
+        marker.scale.z = scale
+        marker.color.a = 1.0
+        marker.color.r = color[0]
+        marker.color.g = color[1]
+        marker.color.b = color[2]
+        marker.pose.position = Point(pos[0], pos[1], pos[2])
+
+        return marker
+
     def image_cb(self, rgb_image, depth_image):
         bridge = CvBridge()
         rgb_frame = bridge.imgmsg_to_cv2(rgb_image, desired_encoding='rgb8')
@@ -314,7 +332,7 @@ class MarkerDetection(object):
                 xyxy = None # Initialize xyx with None
 
 
-                if len(self.crosspos_list) < 15:
+                if len(self.crosspos_list) < 30:
                     radius = 4
                     error_yaw = math.atan2(-42.9 - self.current_pose.pose.position.y, 71.46 - self.current_pose.pose.position.x)
                     current_angle = error_yaw + math.pi
@@ -328,7 +346,7 @@ class MarkerDetection(object):
                     self.target_pose.pose.orientation.z = qz
                     self.target_pose.pose.orientation.w = qw
                 
-                elif 15<=len(self.crosspos_list)<=30:
+                elif 30<=len(self.crosspos_list)<=60:
                     radius = 4
                     error_yaw = math.atan2(-42.9 - self.current_pose.pose.position.y, 71.46 - self.current_pose.pose.position.x)
                     current_angle = error_yaw + math.pi
@@ -347,13 +365,17 @@ class MarkerDetection(object):
     
                     setpoint = np.mean(np.array(self.setpoint_list)[16: , :], axis=0)
 
+                    #visualize
+                    marker = self.make_cube_marker(setpoint, (0.0, 0.0, 1.0), 0.4)
+                    self.approch_pub.publish(marker)
+
                     setpoint[0] = self.current_pose.pose.position.x + (setpoint[0] - self.current_pose.pose.position.x)*0.05
                     setpoint[1] = self.current_pose.pose.position.y + (setpoint[1] - self.current_pose.pose.position.y)*0.05
                     setpoint[2] = self.current_pose.pose.position.z + (setpoint[2] - self.current_pose.pose.position.z)*0.05
                     rospy.loginfo(f"Mean setpoint: {setpoint}")
                     self.target_pose.pose.position.x = setpoint[0]
                     self.target_pose.pose.position.y = setpoint[1]
-                    self.target_pose.pose.position.z = setpoint[2]
+                    self.target_pose.pose.position.z = setpoint[2]                    
 
                     cross_pos_3d = np.mean(np.array(self.crosspos_list), axis=0)
                     rospy.loginfo(f"Mean cross marker: {cross_pos_3d}")

@@ -7,7 +7,7 @@ from mavros_msgs.msg import State
 from mavros_msgs.srv import CommandBool, SetMode, CommandTOL
 from math import pow, atan2, sqrt, pi, degrees
 from std_msgs.msg import Float32MultiArray
-import onnxruntime, rospkg, onnx
+import onnxruntime, rospkg
 import numpy as np
 
 
@@ -39,11 +39,9 @@ class RLControl:
         self.z_offset = 0.0
         self.rospack = rospkg.RosPack()
         self.onnxPath = self.rospack.get_path('safety_landing') + '/scripts/DroneLanding-8078831.onnx'
-
-        self.onnx_model = onnx.load(self.onnxPath)
-        onnx.checker.check_model(self.onnx_model)
         self.model = onnxruntime.InferenceSession(self.onnxPath)
- 
+        # self.model.set_providers(['CPUExecutionProvider'])
+
     def relative_dis_cb(self, msg):
         self.relative_dis = msg
         #rospy.loginfo(f"{self.relative_dis.data[0]}, {self.relative_dis.data[1]}, {self.relative_dis.data[2]}")

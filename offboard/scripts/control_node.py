@@ -120,7 +120,7 @@ class ControlClass(object):
         if self.cmd_state in [1,2,4,5]:
             self.target_pose_pub.publish(self.avoidance)
         if self.cmd_state==3:
-            self.avoidance = self.launch_setposition
+            self.avoidance.pose.orientation = self.launch_setposition.pose.orientation
             self.target_pose_pub.publish(self.avoidance)
     
     def launch_setposition_cb(self, msg):
