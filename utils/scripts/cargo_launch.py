@@ -43,6 +43,25 @@ from mavros_msgs.msg import OverrideRCIn
 # 7	Empty	
 
 ###
+def MAV_CMD_DO_SET_SERVO():
+	rospy.loginfo('Waiting for server...')
+	rospy.wait_for_service('/mavros/cmd/command')
+	try:
+		servo_control_srv = rospy.ServiceProxy('/mavros/cmd/command', CommandLong)
+  
+		resp = servo_control_srv(broadcast=False, command=183, confirmation=False, param1=1, param2=2000, param3=0, param4=0, param5=0, param6=0, param7=0)
+  
+		rospy.loginfo('Try service call...')
+		if resp.success:
+			print("Servo controlled successfully")
+			print(f"result: {resp.result}")
+		else:
+			print("Failed to control servo")
+
+	except rospy.ServiceException as e:
+		print("Service call failed: %s" % e)
+  
+  
 def MAV_CMD_DO_SET_ACTUATOR():
 	rospy.loginfo('Waiting for server...')
 	rospy.wait_for_service('/mavros/cmd/command')
@@ -86,5 +105,6 @@ if __name__ == "__main__":
 	rospy.init_node('cargo_launch', anonymous=True)
 	rospy.wait_for_service('/mavros/cmd/command')
 	# MAV_CMD_DO_GRIPPER()
-	MAV_CMD_DO_SET_ACTUATOR()
+	# MAV_CMD_DO_SET_ACTUATOR()
+	MAV_CMD_DO_SET_SERVO()
 	rospy.loginfo("Done")
