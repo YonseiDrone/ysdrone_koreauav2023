@@ -91,7 +91,7 @@ class BuildingSearch(object):
         # Read points from ROS PointCloud2 message
         points_generator = pc2.read_points(input, skip_nans=True, field_names=("x", "y", "z"))
         # Convert the generator to a list of tuples
-        points_list = [tuple(point) for point in points_generator]
+        points_list = [tuple(point) for point in points_generator if point[2] > 2]
 
         # Create a pcl.PointCloud object
         cloud = pcl.PointCloud()
