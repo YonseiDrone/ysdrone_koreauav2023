@@ -126,11 +126,17 @@ class ControlClass(object):
             self.target_pose_pub.publish(self.avoidance)
 
         elif self.cmd_state == 2:
-            self.avoidance = self.building_target
+            self.avoidance.pose.orientation.x = self.building_target.pose.orientation.x
+            self.avoidance.pose.orientation.y = self.building_target.pose.orientation.y
+            self.avoidance.pose.orientation.z = self.building_target.pose.orientation.z
+            self.avoidance.pose.orientation.w = self.building_target.pose.orientation.w
             self.target_pose_pub.publish(self.avoidance)
 
         elif self.cmd_state==3:
-            self.avoidance = self.launch_setposition
+            self.avoidance.pose.orientation.x = self.launch_setposition.pose.orientation.x
+            self.avoidance.pose.orientation.y = self.launch_setposition.pose.orientation.y
+            self.avoidance.pose.orientation.z = self.launch_setposition.pose.orientation.z
+            self.avoidance.pose.orientation.w = self.launch_setposition.pose.orientation.w
             self.target_pose_pub.publish(self.avoidance)
 
     def building_target_cb(self, msg):
@@ -260,7 +266,7 @@ class ControlClass(object):
             self.target_pose.pose.position.y = 0
             self.target_pose.pose.position.z = 3 #rospy.get_param('destination_z')?
             self.target_pose_pub.publish(self.target_pose)
-            rospy.loginfo(f"Takeoff")
+            #rospy.loginfo(f"Takeoff")
 
 
         # Mission 1(Obstacle Avoidance Planner)
@@ -269,14 +275,14 @@ class ControlClass(object):
             config = self.dynamic_client.update_configuration(new_config)
             self.avoidance_pos_pub.publish(self.destination_command_marker_array)
             #rospy.loginfo(f"{self.destination_command_marker_array}")
-            rospy.loginfo(f'Target Waypoint - x :{self.destination_command_marker.pose.position.x}, y :{self.destination_command_marker.pose.position.y}, z :{self.destination_command_marker.pose.position.z}')
+            #rospy.loginfo(f'Target Waypoint - x :{self.destination_command_marker.pose.position.x}, y :{self.destination_command_marker.pose.position.y}, z :{self.destination_command_marker.pose.position.z}')
 
         # Mission 2(Building Searching)
         if self.cmd_state == 2:
             self.mission_num.data = self.cmd_state
             self.mission_pub.publish(self.mission_num)
             self.avoidance_pos_pub.publish(self.building_target_marker_array)
-            rospy.loginfo(f"Mission published to [Building Search] data: {self.mission_num.data}")
+            #rospy.loginfo(f"Mission published to [Building Search] data: {self.mission_num.data}")
 
         
         # Mission 3(Cross Detection Mode)
@@ -288,7 +294,7 @@ class ControlClass(object):
 
 
             self.avoidance_pos_pub.publish(self.launch_setposition_marker_array)
-            rospy.loginfo(f"Mission published to [Cross Detection] data: {self.mission_num.data}")
+            #rospy.loginfo(f"Mission published to [Cross Detection] data: {self.mission_num.data}")
 
 
         # Mission 4(Cargo Launching Mode)

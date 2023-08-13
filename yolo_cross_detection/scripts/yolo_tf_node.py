@@ -52,7 +52,7 @@ class MarkerDetection(object):
 
         #setpoint
         self.offset = 3 # Distance from the cross marker
-        self.circular_speed = 0.2
+        self.circular_speed = 0.4
 
         self.current_state = State()
         self.current_pose = PoseStamped()
