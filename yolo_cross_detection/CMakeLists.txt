@@ -13,6 +13,7 @@ find_package(catkin REQUIRED COMPONENTS
   mavros_msgs
   rospy
   std_msgs
+  koreauav_utils
 )
 
 ## System dependencies are found with CMake's conventions
