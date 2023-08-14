@@ -64,7 +64,7 @@ class BuildingSearch(object):
         self.last_goal_x = rospy.get_param("/destination_3_pose_x", 80.0)
         self.last_goal_y = rospy.get_param("/destination_3_pose_y", -41.0)
         self.last_goal_z = rospy.get_param("/destination_z", 3)
-        self.search_height = 4
+        self.search_height = 3
 
         # ROS publisher & subscriber
         self.cloud_sub = rospy.Subscriber('/local_pointcloud', PointCloud2, self.cloud_cb)
@@ -92,7 +92,7 @@ class BuildingSearch(object):
         # Read points from ROS PointCloud2 message
         points_generator = pc2.read_points(input, skip_nans=True, field_names=("x", "y", "z"))
         # Convert the generator to a list of tuples
-        points_list = [tuple(point) for point in points_generator]
+        points_list = [tuple(point) for point in points_generator if point[2]>2]
 
         # Create a pcl.PointCloud object
         cloud = pcl.PointCloud()
@@ -140,7 +140,7 @@ class BuildingSearch(object):
                     self.target_pose.pose.position.y = self.last_goal_y
                     self.target_pose.pose.position.z = self.search_height
                     roll, pitch, yaw = to_euler_angles(self.imu.orientation.x, self.imu.orientation.y, self.imu.orientation.z, self.imu.orientation.w)
-                    target_yaw = yaw - 0.2
+                    target_yaw = yaw + 0.1
                     qx, qy, qz, qw = to_quaternion(target_yaw, pitch, roll)
                     self.target_pose.pose.orientation.x = qx
                     self.target_pose.pose.orientation.y = qy

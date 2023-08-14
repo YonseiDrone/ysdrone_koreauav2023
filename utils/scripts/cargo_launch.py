@@ -105,6 +105,6 @@ if __name__ == "__main__":
 	rospy.init_node('cargo_launch', anonymous=True)
 	rospy.wait_for_service('/mavros/cmd/command')
 	# MAV_CMD_DO_GRIPPER()
-	# MAV_CMD_DO_SET_ACTUATOR()
-	MAV_CMD_DO_SET_SERVO()
+	MAV_CMD_DO_SET_ACTUATOR()
+	# MAV_CMD_DO_SET_SERVO()
 	rospy.loginfo("Done")

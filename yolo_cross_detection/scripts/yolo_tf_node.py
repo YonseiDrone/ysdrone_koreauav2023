@@ -67,8 +67,8 @@ class MarkerDetection(object):
                         [0.0, 0.0, 1.0]])
 
         #setpoint
-        self.offset = 2.5 # Distance from the cross marker
-        self.circular_speed = 0.1 # unit: [rad]
+        self.offset = 8 # Distance from the cross marker
+        self.circular_speed = 0.2 # unit: [rad]
 
         self.current_state = State()
         self.current_pose = PoseStamped()
@@ -153,7 +153,7 @@ class MarkerDetection(object):
         #rospy.loginfo(f"distances shapes: {distances.shape}")
         #=====================Pixel to Camera======================================================================
         camera_coords = np.ones((4, len(distances)))
-        camera_coords[2, :] = distances
+        camera_coords[2, :] = distances*0.001
         camera_coords[0, :] = (pixels[:, 0] - self.intrinsic_matrix[0, 2]) * camera_coords[2, :] / self.intrinsic_matrix[0, 0] #x
         camera_coords[1, :] = (pixels[:, 1] - self.intrinsic_matrix[1, 2]) * camera_coords[2, :] / self.intrinsic_matrix[1, 1] #y
         #=====================Camera to FLU========================================================================
@@ -236,8 +236,8 @@ class MarkerDetection(object):
         x_start, y_start = left_top
         x_end, y_end = right_bottom
 
-        for x in range(x_start, x_end + 1, interval):
-            for y in range(y_start, y_end + 1, interval):
+        for x in range(x_start, x_end, interval):
+            for y in range(y_start, y_end, interval):
                 result.append((x, y))
 
         return result
@@ -293,10 +293,10 @@ class MarkerDetection(object):
                 xyxy = None # Initialize xyx with None
                 #========================TODO===================
                 # centroid, radius!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-                radius = 5.5
+                radius = 6.5
 
                 #======================================================
-                if len(self.crosspos_list) < 10:
+                if len(self.crosspos_list) < 7:
                     error_yaw = math.atan2(self.centroid[1] - self.current_pose.pose.position.y, self.centroid[0] - self.current_pose.pose.position.x)
                     current_angle = error_yaw + math.pi
                     qz = math.sin(error_yaw/2.0)
@@ -308,9 +308,10 @@ class MarkerDetection(object):
                     self.target_pose.pose.orientation.y = 0
                     self.target_pose.pose.orientation.z = qz
                     self.target_pose.pose.orientation.w = qw
+                    rospy.loginfo(f"under 7")
+                    self.target_pose_pub.publish(self.target_pose)
                 
-                elif 10<=len(self.crosspos_list)<=25:
-                    radius = 5
+                elif 7<=len(self.crosspos_list)<=25:
                     error_yaw = math.atan2(self.centroid[1] - self.current_pose.pose.position.y, self.centroid[0] - self.current_pose.pose.position.x)
                     current_angle = error_yaw + math.pi
                     qz = math.sin(error_yaw/2.0)
@@ -322,11 +323,14 @@ class MarkerDetection(object):
                     self.target_pose.pose.orientation.y = 0
                     self.target_pose.pose.orientation.z = qz
                     self.target_pose.pose.orientation.w = qw
+                    rospy.loginfo(f"under 25")
+                    self.target_pose_pub.publish(self.target_pose)
+                    rospy.loginfo("Search Done")
 
                 else:
                     #==================TODO=====================
                     #Outlier delete
-                    setpoint = np.mean(np.array(self.setpoint_list)[16: , :], axis=0)
+                    setpoint = np.mean(np.array(self.setpoint_list)[7: , :], axis=0)
                     marker = self.make_cube_marker(setpoint, (0.0, 0.0, 1.0), 0.4)
                     self.approch_pub.publish(marker)
 
@@ -349,6 +353,7 @@ class MarkerDetection(object):
                     self.target_pose.pose.orientation.y = 0.0
                     self.target_pose.pose.orientation.z = qz
                     self.target_pose.pose.orientation.w = qw
+                    self.target_pose_pub.publish(self.target_pose)
 
                 for volume in results.xyxy[0]:
                     xyxy = volume.numpy()
@@ -382,7 +387,6 @@ class MarkerDetection(object):
                     # crossmarker break
                     break
                 
-                self.target_pose_pub.publish(self.target_pose)
                 #rospy.loginfo(f"target pose: {self.target_pose}")
 
             try:
