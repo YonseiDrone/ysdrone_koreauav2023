@@ -163,6 +163,7 @@ target_link_libraries(yaml_to_gps
 ## in contrast to setup.py, you can choose the destination
 catkin_install_python(PROGRAMS
   scripts/cargo_launch.py
+  scripts/auto_service.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 

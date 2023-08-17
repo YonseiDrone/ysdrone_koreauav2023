@@ -122,23 +122,16 @@ class ControlClass(object):
 
     def avoidance_pos_cb(self, msg):
         self.avoidance = msg
-        if self.cmd_state in [1,4,5]:
-            self.target_pose_pub.publish(self.avoidance)
-
-        elif self.cmd_state == 2:
-            # self.avoidance.pose.orientation.x = self.building_target.pose.orientation.x
-            # self.avoidance.pose.orientation.y = self.building_target.pose.orientation.y
-            # self.avoidance.pose.orientation.z = self.building_target.pose.orientation.z
-            # self.avoidance.pose.orientation.w = self.building_target.pose.orientation.w
+        if self.cmd_state == 2 and self.building_target.pose.position.z != 0:
+            rospy.loginfo(f"Building_search")
             self.avoidance = self.building_target
-            self.target_pose_pub.publish(self.avoidance)
+        elif self.cmd_state==3 and self.launch_setposition.pose.position.z != 0:
+            rospy.loginfo(f"launch_setposition")
+            self.avoidance = self.launch_setposition
 
-        elif self.cmd_state==3:
-            self.avoidance.pose.orientation.x = self.launch_setposition.pose.orientation.x
-            self.avoidance.pose.orientation.y = self.launch_setposition.pose.orientation.y
-            self.avoidance.pose.orientation.z = self.launch_setposition.pose.orientation.z
-            self.avoidance.pose.orientation.w = self.launch_setposition.pose.orientation.w
-            self.target_pose_pub.publish(self.avoidance)
+        # rospy.loginfo(self.avoidance)
+        self.target_pose_pub.publish(self.avoidance)
+
 
     def building_target_cb(self, msg):
         self.building_target = msg
