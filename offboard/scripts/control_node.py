@@ -2,7 +2,7 @@
 import rospy
 import math
 import tf
-from std_msgs.msg import Float32
+from std_msgs.msg import Float32, String
 from geometry_msgs.msg import PoseStamped, Twist
 from visualization_msgs.msg import MarkerArray, Marker
 from mavros_msgs.msg import State, PositionTarget
@@ -90,6 +90,7 @@ class ControlClass(object):
         self.isly_destination_command_marker_array = MarkerArray()
         self.desired_landing = PositionTarget()
         self.mission_num = Float32()
+        self.mission_rep = String()
         self.RL_target_vel = Twist()
         self.launch_setposition = PoseStamped()
         self.launch_setposition_marker = Marker()
@@ -99,8 +100,8 @@ class ControlClass(object):
         self.building_target = PoseStamped()
         self.building_target_marker = Marker()
         self.building_target_marker_array = MarkerArray()
-
-    
+        self.resp = DroneCommandResponse()
+        self.resp.mode = 'Takeoff Mode'
         #Subscriber
         self.state_sub = rospy.Subscriber('/mavros/state', State, self.state_cb)
         self.pose_sub = rospy.Subscriber('/mavros/local_position/pose', PoseStamped, self.pose_cb) 
@@ -119,6 +120,7 @@ class ControlClass(object):
         self.desired_landing_pub = rospy.Publisher('/mavros/setpoint_raw/local', PositionTarget, queue_size=1)
         
         self.mission_pub = rospy.Publisher('/mission', Float32, queue_size=1)
+        self.mission_rep_pub = rospy.Publisher('/mission_rep', String, queue_size=1)
 
     def avoidance_pos_cb(self, msg):
         self.avoidance = msg
@@ -214,7 +216,6 @@ class ControlClass(object):
     
     def cmdreact_cb(self, req):
         self.cmd_state = req.command
-        self.resp = DroneCommandResponse()
         if self.cmd_state == 0:
             self.resp.mode = 'Takeoff Mode'
             self.resp.res = True
@@ -253,43 +254,33 @@ class ControlClass(object):
     
     def main_controller(self, e):
         self.time_now = rospy.Time.now()
+        self.mission_num.data = self.cmd_state
+        self.mission_pub.publish(self.mission_num)
+        self.mission_rep.data = self.resp.mode
+        self.mission_rep_pub.publish(self.mission_rep)
 
         # Mission 0(Take off)
         if self.cmd_state == 0:
             self.target_pose.pose.position.x = 0
             self.target_pose.pose.position.y = 0
-            self.target_pose.pose.position.z = 3 #rospy.get_param('destination_z')?
+            self.target_pose.pose.position.z = 3
             self.target_pose_pub.publish(self.target_pose)
-            #rospy.loginfo(f"Takeoff")
-
 
         # Mission 1(Obstacle Avoidance Planner)
         if self.cmd_state == 1:
             new_config = {"obstacle_cost_param_": 5}
-            config = self.dynamic_client.update_configuration(new_config)
+            self.dynamic_client.update_configuration(new_config)
             self.avoidance_pos_pub.publish(self.destination_command_marker_array)
-            #rospy.loginfo(f"{self.destination_command_marker_array}")
-            #rospy.loginfo(f'Target Waypoint - x :{self.destination_command_marker.pose.position.x}, y :{self.destination_command_marker.pose.position.y}, z :{self.destination_command_marker.pose.position.z}')
 
         # Mission 2(Building Searching)
         if self.cmd_state == 2:
-            self.mission_num.data = self.cmd_state
-            self.mission_pub.publish(self.mission_num)
             self.avoidance_pos_pub.publish(self.building_target_marker_array)
-            #rospy.loginfo(f"Mission published to [Building Search] data: {self.mission_num.data}")
-
         
         # Mission 3(Cross Detection Mode)
         if self.cmd_state == 3:
-            self.mission_num.data = self.cmd_state
-            self.mission_pub.publish(self.mission_num)
             new_config = {"obstacle_cost_param_": 0.1}
-            config = self.dynamic_client.update_configuration(new_config)
-
-
+            self.dynamic_client.update_configuration(new_config)
             self.avoidance_pos_pub.publish(self.launch_setposition_marker_array)
-            #rospy.loginfo(f"Mission published to [Cross Detection] data: {self.mission_num.data}")
-
 
         # Mission 4(Cargo Launching Mode)
         if self.cmd_state == 4:
@@ -305,7 +296,6 @@ class ControlClass(object):
         if self.cmd_state == 6:
             self.desired_landing_pub.publish(self.desired_landing)
             rospy.loginfo(f"Velocity - x: {self.desired_landing.velocity.x}, y: {self.desired_landing.velocity.y}, z : {self.desired_landing.velocity.z}")
-        
         
         # Mission 7(Position Control)
         if self.cmd_state == 7:
@@ -324,7 +314,6 @@ class ControlClass(object):
         # Mission 9(RL Landing with GPS)
         if self.cmd_state == 9:
             self.landing_velocity_pub.publish(self.RL_target_vel)
-            rospy.loginfo(f"Velocity - x: {self.RL_target_vel.linear.x}, y: {self.RL_target_vel.linear.y}, z: {self.RL_target_vel.linear.z}")
 
         # Mission 10(RL Landing with Aruco)
         if self.cmd_state == 10:
@@ -336,10 +325,6 @@ class ControlClass(object):
             self.target_pose_pub.publish(self.target_pose) 
             self.landing_velocity_pub.publish(self.RL_target_vel)
             rospy.loginfo(f"Velocity - x: {self.RL_target_vel.linear.x}, y: {self.RL_target_vel.linear.y}, z: {self.RL_target_vel.linear.z}")
-
-
-
-
 
 
 if __name__ == "__main__":
