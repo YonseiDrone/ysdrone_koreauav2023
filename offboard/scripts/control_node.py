@@ -10,6 +10,7 @@ from tf.transformations import euler_from_quaternion, quaternion_from_euler
 from dynamic_reconfigure.client import Client
 
 from ysdrone_msgs.srv import *
+from koreauav_utils import auto_service
 #====================================================================
 # Mathmatical conversion functions
 def rad2deg(radian):
@@ -266,6 +267,9 @@ class ControlClass(object):
             self.target_pose.pose.position.y = 0
             self.target_pose.pose.position.z = 3
             self.target_pose_pub.publish(self.target_pose)
+
+            if abs(self.target_pose.pose.position.z - self.current_pose.pose.position.z) < 0.1:
+                auto_service.call_drone_command(1)
 
         # Mission 1(Obstacle Avoidance Planner)
         if self.cmd_state == 1:

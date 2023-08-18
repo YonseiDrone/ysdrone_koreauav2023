@@ -10,6 +10,7 @@ from sensor_msgs.msg import PointCloud2, Imu, PointField
 import sensor_msgs.point_cloud2 as pc2
 import pcl
 import numpy as np
+from koreauav_utils import auto_service
 
 def to_quaternion(yaw, pitch, roll):
     cy = math.cos(yaw * 0.5)
@@ -179,8 +180,12 @@ class BuildingSearch(object):
                 self.centroid.pose.position.x = centroid[0]
                 self.centroid.pose.position.y = centroid[1]
                 self.centroid.pose.position.z = centroid[2]
-                #rospy.loginfo(f"centroid: {self.centroid}")
                 self.centroid_pub.publish(self.centroid)
+
+                if len(self.building_centroid) == 40:
+                    auto_service.call_drone_command(3)
+
+            
 
 if __name__ == "__main__":
     rospy.init_node('building_search_python_node', anonymous=True)

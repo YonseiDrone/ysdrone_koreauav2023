@@ -17,7 +17,7 @@ from std_msgs.msg import Float32, String
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 import pandas
-
+from koreauav_utils import auto_service
 
 def to_euler_angles(x, y, z, w):
     # roll(x-axis rotation)
@@ -86,6 +86,7 @@ class MarkerDetection(object):
         self.image_pub = rospy.Publisher('/cross_image', Image, queue_size=10)
         self.approch_pub = rospy.Publisher('/cross_marker_approch_setpoint', Marker, queue_size=1)
         self.centroid_pub = rospy.Publisher('/building_centroid', Marker, queue_size=1)
+        self.obstacle_bound_pub = rospy.Publisher('/obstacle_bound', Marker, queue_size=1)
         self.cross_marker_pub = rospy.Publisher('/cross_marker_position', Marker, queue_size=1)
         self.target_pose_pub = rospy.Publisher('/launch_setposition', PoseStamped, queue_size=1)
 
@@ -285,6 +286,25 @@ class MarkerDetection(object):
         marker.pose.position = Point(pos[0], pos[1], pos[2])
 
         return marker
+    
+    def make_line_marker(self, pos, radius):
+        marker2 = Marker()
+        marker2.lifetime = rospy.Duration()
+        marker2.header.frame_id = "local_origin"
+        marker2.type = Marker.LINE_STRIP
+        marker2.action = Marker.ADD
+        marker2.color.a = 1.0
+        marker2.color.b = 1.0
+        marker2.scale.x = 1.0
+
+        marker2.points=[]
+        samples = 20
+        for i in range(samples):
+            x = radius * math.cos(math.pi * 2.0 / samples)
+            y = radius * math.sin(math.pi * 2.0 / samples)
+            z = pos[2]
+            marker2.points.append(Point(x, y, z))
+        return marker2
 
     def calc_attractive_force(self, x, y, gx, gy):
         e_x, e_y = gx-x, gy-y
@@ -309,6 +329,8 @@ class MarkerDetection(object):
             else:
                 rep_x = rep_x
                 rep_y = rep_y
+            bound = self.make_line_marker(obs[obs_xy], self.obstacle_bound)
+            self.obstacle_bound_pub.publish(bound)
         return rep_x, rep_y
                 
 
@@ -322,7 +344,7 @@ class MarkerDetection(object):
                 resolution = (rgb_frame.shape[0], rgb_frame.shape[1])
                 results = self.model(cv2.resize(rgb_frame, (640, 640)))
                 xyxy = None # Initialize xyx with None
-                obstacle = np.array([[self.centroid[0], self.centroid[1]]])
+                obstacle = np.array([[self.centroid[0], self.centroid[1], self.centroid[2]]])
 
                 if len(self.crosspos_list) < 15:
                     error_yaw = math.atan2(self.centroid[1] - self.current_pose.pose.position.y, self.centroid[0]- self.current_pose.pose.position.x)
@@ -381,7 +403,7 @@ class MarkerDetection(object):
 
                     cross_pos_3d = np.mean(np.array(self.crosspos_list), axis=0)
                     #visualize
-                    marker = self.make_cube_marker(cross_pos_3d, (0.0, 0.0, 1.0), 0.4)
+                    marker = self.make_cube_marker(cross_pos_3d, (0.0, 0.5, 0.5), 0.4)
                     self.cross_marker_pub.publish(marker)
                     # rospy.loginfo(f"Mean cross marker: {cross_pos_3d}")
                     
@@ -420,10 +442,10 @@ class MarkerDetection(object):
                     setpoint = self.cal_approch_setpoint(cross_pos_3d, other_pos_3d, drone_pos_3d, offset=self.offset)
                     self.setpoint_list.append(setpoint)
 
-                    # if np.linalg.norm(drone_pos_3d - setpoint) < 0.1:
-                    #     self.counter += 1
-                    # if self.counter > 50:
-                    #     call_drone_command(5)
+                    if np.linalg.norm(drone_pos_3d - setpoint) < 0.3:
+                        self.counter += 1
+                    if self.counter > 10:
+                        auto_service.call_drone_command(5)
                         
                     
                     cv2.putText(rgb_frame, f'inference time : {time.time() - start:.3f}', (0, 50), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(0, 0, 255), thickness=2)
@@ -431,7 +453,7 @@ class MarkerDetection(object):
                     cv2.putText(rgb_frame, f'{xyxy[4]:.3f}', (int(xyxy[0]), int(xyxy[1])), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(0, 255, 0), thickness=2)
                     #rospy.loginfo(f"setpoint: {setpoint}")
                     #rospy.loginfo(f"get_2d: {self.get_2d_coord(setpoint)}")
-                    # cv2.line(rgb_frame, (int(cross_pos[0]), int(cross_pos[1])), self.get_2d_coord(setpoint), (255, 0, 0), thickness=3)
+                    cv2.line(rgb_frame, (int(cross_pos[0]), int(cross_pos[1])), self.get_2d_coord(setpoint), (255, 0, 0), thickness=3)
                     # crossmarker break()
                     break
 
