@@ -16,5 +16,5 @@
     <node pkg="offboard" type="path_node.py" name="path_node" required="true" output="screen"/>
     <node pkg="isly" type="isly_path_node.py" name="isly_path_node" required="true" output="screen"/>
 	<node pkg="yolo_cross_detection" type="yolo_tf_node.py" name="yolo_tf_node" required="true" output="screen"/>
-
+	<node pkg="koreauav_utils" type="cargo_launch.py" name="cargo_launch" required="true" output="screen"/>
 </launch>

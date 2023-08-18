@@ -445,7 +445,7 @@ class MarkerDetection(object):
                     if np.linalg.norm(drone_pos_3d - setpoint) < 0.3:
                         self.counter += 1
                     if self.counter > 10:
-                        auto_service.call_drone_command(5)
+                        auto_service.call_drone_command(4)
                         
                     
                     cv2.putText(rgb_frame, f'inference time : {time.time() - start:.3f}', (0, 50), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(0, 0, 255), thickness=2)
@@ -453,7 +453,10 @@ class MarkerDetection(object):
                     cv2.putText(rgb_frame, f'{xyxy[4]:.3f}', (int(xyxy[0]), int(xyxy[1])), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(0, 255, 0), thickness=2)
                     #rospy.loginfo(f"setpoint: {setpoint}")
                     #rospy.loginfo(f"get_2d: {self.get_2d_coord(setpoint)}")
-                    cv2.line(rgb_frame, (int(cross_pos[0]), int(cross_pos[1])), self.get_2d_coord(setpoint), (255, 0, 0), thickness=3)
+                    try:
+                        cv2.line(rgb_frame, (int(cross_pos[0]), int(cross_pos[1])), self.get_2d_coord(setpoint), (255, 0, 0), thickness=3)
+                    except:
+                        pass
                     # crossmarker break()
                     break
 

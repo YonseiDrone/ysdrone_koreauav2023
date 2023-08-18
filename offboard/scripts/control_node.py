@@ -103,6 +103,10 @@ class ControlClass(object):
         self.building_target_marker_array = MarkerArray()
         self.resp = DroneCommandResponse()
         self.resp.mode = 'Takeoff Mode'
+        self.move = PoseStamped()
+        self.move_marker = Marker()
+        self.move_marker_array = MarkerArray()
+
         #Subscriber
         self.state_sub = rospy.Subscriber('/mavros/state', State, self.state_cb)
         self.pose_sub = rospy.Subscriber('/mavros/local_position/pose', PoseStamped, self.pose_cb) 
@@ -113,6 +117,7 @@ class ControlClass(object):
         self.launch_setposition_sub = rospy.Subscriber('/launch_setposition', PoseStamped, self.launch_setposition_cb)
         self.avoidance_pos_sub = rospy.Subscriber('/avoidance/setpoint_position/local', PoseStamped, self.avoidance_pos_cb)
         self.building_target_sub = rospy.Subscriber('/building/search/target_pose', PoseStamped, self.building_target_cb)
+        self.move_sub = rospy.Subscriber('/move_to_launch', PoseStamped, self.move_cb)
 
         #Publisher
         self.target_pose_pub = rospy.Publisher('/mavros/setpoint_position/local', PoseStamped, queue_size=1)
@@ -131,11 +136,19 @@ class ControlClass(object):
         elif self.cmd_state==3 and self.launch_setposition.pose.position.z != 0:
             rospy.loginfo(f"launch_setposition")
             self.avoidance = self.launch_setposition
-        # elif self.cmd_state == 9 and self.RL_target_vel.linear.z != 0:
-        #     self.avoidance = None
+        elif self.cmd_state==4 and self.move.pose.position.z != 0:
+            self.avoidance = self.move
+            rospy.loginfo(self.avoidance)
 
         self.target_pose_pub.publish(self.avoidance)
 
+    def move_cb(self, msg):
+        self.move = msg
+        self.move_marker.pose.position.x = msg.pose.position.x
+        self.move_marker.pose.position.y = msg.pose.position.y
+        self.move_marker.pose.position.z = msg.pose.position.z
+        self.move_marker_array.markers.clear()
+        self.move_marker_array.markers.append(self.move_marker)
 
     def building_target_cb(self, msg):
         self.building_target = msg
@@ -289,7 +302,7 @@ class ControlClass(object):
 
         # Mission 4(Cargo Launching Mode)
         if self.cmd_state == 4:
-            pass
+            self.avoidance_pos_pub.publish(self.move_marker_array)
 
         # Mission 5(Of course I Still Love you)
         if self.cmd_state == 5:
