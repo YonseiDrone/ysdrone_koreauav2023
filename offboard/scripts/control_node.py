@@ -128,8 +128,9 @@ class ControlClass(object):
         elif self.cmd_state==3 and self.launch_setposition.pose.position.z != 0:
             rospy.loginfo(f"launch_setposition")
             self.avoidance = self.launch_setposition
+        # elif self.cmd_state == 9 and self.RL_target_vel.linear.z != 0:
+        #     self.avoidance = None
 
-        # rospy.loginfo(self.avoidance)
         self.target_pose_pub.publish(self.avoidance)
 
 
