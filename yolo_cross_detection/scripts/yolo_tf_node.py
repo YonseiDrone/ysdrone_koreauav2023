@@ -13,7 +13,7 @@ import math, time
 from geometry_msgs.msg import PoseStamped, Point
 from visualization_msgs.msg import Marker
 from mavros_msgs.msg import State
-from std_msgs.msg import Float32
+from std_msgs.msg import Float32, String
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 import pandas
@@ -48,6 +48,7 @@ class MarkerDetection(object):
         self.model = torch.hub.load(self.yoloPath, 'custom', self.weightPath, source='local', force_reload=False)
         self.model.iou = 0.5
         self.mission = 0
+        self.mission_rep = ""
         self.setpoint_list = []
         self.crosspos_list = []
         self.dronepos_list = []
@@ -55,8 +56,8 @@ class MarkerDetection(object):
         self.counter = 0
 
         #setpoint
-        self.offset = 5 # Distance from the cross marker
-        self.circular_speed = 0.3
+        self.offset = 3 # Distance from the cross marker
+        self.circular_speed = 0.2
         self.radius = 4.0
 
         self.current_state = State()
@@ -73,6 +74,7 @@ class MarkerDetection(object):
         self.state_sub = rospy.Subscriber('/mavros/state', State, self.state_cb)
         self.pose_sub = rospy.Subscriber('/mavros/local_position/pose', PoseStamped, self.pose_cb)
         self.mission_sub = rospy.Subscriber('/mission', Float32, self.mission_cb)
+        self.mission_rep_sub = rospy.Subscriber('/mission_rep', String, self.mission_rep_cb)
         self.imu_sub = rospy.Subscriber('/mavros/imu/data', Imu, self.imu_cb)
         self.centroid_sub = rospy.Subscriber('/building/search/centroid_pose', PoseStamped, self.centroid_cb)
 
@@ -82,7 +84,7 @@ class MarkerDetection(object):
 
         # Publisher
         self.image_pub = rospy.Publisher('/cross_image', Image, queue_size=10)
-        self.approch_pub = rospy.Publisher('/cross_marker_approch', Marker, queue_size=1)
+        self.approch_pub = rospy.Publisher('/cross_marker_approch_setpoint', Marker, queue_size=1)
         self.centroid_pub = rospy.Publisher('/building_centroid', Marker, queue_size=1)
         self.cross_marker_pub = rospy.Publisher('/cross_marker_position', Marker, queue_size=1)
         self.target_pose_pub = rospy.Publisher('/launch_setposition', PoseStamped, queue_size=1)
@@ -91,6 +93,10 @@ class MarkerDetection(object):
         self.Kp_att = 0.1
         self.Kp_rel = 36.0
         self.obstacle_bound = 1.5
+
+        self.intrinsic_matrix = np.array([[454.6857718666893, 0.0, 424.5],
+                        [0.0, 454.6857718666893, 240.5],
+                        [0.0, 0.0, 1.0]])
 
         rospy.on_shutdown(self.visualize)
 
@@ -132,6 +138,9 @@ class MarkerDetection(object):
     def mission_cb(self, msg):
         self.mission = msg.data
 
+    def mission_rep_cb(self, msg):
+        self.mission_rep = msg.data
+
     def imu_cb(self, msg):
         self.imu = msg
 
@@ -148,9 +157,6 @@ class MarkerDetection(object):
         self.current_pose = msg
 
     def get_3d_coord_fast(self, pixels, depth_frame):
-        intrinsic_matrix = np.array([[454.6857718666893, 0.0, 424.5],
-                        [0.0, 454.6857718666893, 240.5],
-                        [0.0, 0.0, 1.0]])
         pixels = np.array(pixels).astype(np.int32)
         #rospy.loginfo(f"pixels shape: {pixels.shape}")
         distances = depth_frame[pixels[:, 1], pixels[:, 0]]
@@ -159,8 +165,8 @@ class MarkerDetection(object):
         #=====================Image to Camera======================================================================
         camera_coords = np.ones((4, len(distances)))
         camera_coords[2, :] = distances
-        camera_coords[0, :] = (pixels[:, 0] - intrinsic_matrix[0, 2]) * camera_coords[2, :] / intrinsic_matrix[0, 0] #x
-        camera_coords[1, :] = (pixels[:, 1] - intrinsic_matrix[1, 2]) * camera_coords[2, :] / intrinsic_matrix[1, 1] #y
+        camera_coords[0, :] = (pixels[:, 0] - self.intrinsic_matrix[0, 2]) * camera_coords[2, :] / self.intrinsic_matrix[0, 0] #x
+        camera_coords[1, :] = (pixels[:, 1] - self.intrinsic_matrix[1, 2]) * camera_coords[2, :] / self.intrinsic_matrix[1, 1] #y
         #=====================Camera to FLU========================================================================
         camera_to_flu = np.array([[ 6.12323400e-17,  0.00000000e+00,  1.00000000e+00,  0.00000000e+00], 
                                 [-1.00000000e+00,  6.12323400e-17,  6.12323400e-17,  0.00000000e+00], 
@@ -214,7 +220,6 @@ class MarkerDetection(object):
         z_rotation = 0 
         flu_x_rotation = np.array([[1,0,0], [0, np.cos(x_rotation), -np.sin(x_rotation)], [0, np.sin(x_rotation), np.cos(x_rotation)]])
         flu_y_rotation = np.array([[np.cos(y_rotation),0,np.sin(y_rotation)], [0,1,0], [-np.sin(y_rotation), 0, np.cos(y_rotation)]])
-        flu_z_rotation = np.array([[np.cos(z_rotation), -np.sin(z_rotation), 0], [np.sin(z_rotation), np.cos(z_rotation), 0], [0,0,1]])
         flu_rotation = np.dot(flu_x_rotation, flu_y_rotation)
         flu_rotation = np.linalg.inv(flu_rotation)
         flu_translation = np.array([0, 0, 0])
@@ -226,11 +231,8 @@ class MarkerDetection(object):
         cam_coord = np.dot(flu_to_cam, flu_coord)
 
         #===============================Camera to Pixel coordinate==========================================
-        intrinsic_matrix = np.array([[454.6857718666893, 0.0, 424.5],
-                        [0.0, 454.6857718666893, 240.5],
-                        [0.0, 0.0, 1.0]])
         cam_coord = cam_coord[:3]
-        image_coordinates = np.dot(intrinsic_matrix, cam_coord)
+        image_coordinates = np.dot(self.intrinsic_matrix, cam_coord)
         u = image_coordinates[0] / image_coordinates[2]
         v = image_coordinates[1] / image_coordinates[2]
 
@@ -249,7 +251,6 @@ class MarkerDetection(object):
         return result
     
     def cal_approch_setpoint(self, cross_pos, other_pos, drone_pos, offset):
-        n = len(other_pos)
         points = np.array(other_pos)
 
         mean_point = np.mean(points, axis=0)
@@ -290,11 +291,6 @@ class MarkerDetection(object):
         distance = np.linalg.norm([e_x, e_y])
 
         self.Kp_att = distance * 0.1
-        # if e_x<0.1 and e_y<0.1:
-        #     self.Kp_att = 0.01
-        # else:
-        #     self.Kp_att = 0.1
-
         att_x = self.Kp_att * e_x/distance
         att_y = self.Kp_att * e_y/distance
 
@@ -328,13 +324,13 @@ class MarkerDetection(object):
                 xyxy = None # Initialize xyx with None
                 obstacle = np.array([[self.centroid[0], self.centroid[1]]])
 
-                if len(self.crosspos_list) < 30:
+                if len(self.crosspos_list) < 15:
                     error_yaw = math.atan2(self.centroid[1] - self.current_pose.pose.position.y, self.centroid[0]- self.current_pose.pose.position.x)
                     current_angle = error_yaw + math.pi
                     qz = math.sin(error_yaw/2.0)
                     qw = math.cos(error_yaw/2.0)
 
-                    if len(self.crosspos_list) == 28:
+                    if len(self.crosspos_list) == 10:
                         self.circular_speed *= -1
                     self.target_pose.pose.position.x = self.centroid[0] + self.radius*math.cos(current_angle + self.circular_speed)
                     self.target_pose.pose.position.y = self.centroid[1] + self.radius*math.sin(current_angle + self.circular_speed)
@@ -344,7 +340,7 @@ class MarkerDetection(object):
                     self.target_pose.pose.orientation.z = qz
                     self.target_pose.pose.orientation.w = qw
 
-                elif 30<=len(self.crosspos_list)<=60:
+                elif 15<=len(self.crosspos_list)<=30:
                     error_yaw = math.atan2(self.centroid[1] - self.current_pose.pose.position.y, self.centroid[0]- self.current_pose.pose.position.x)
                     current_angle = error_yaw + math.pi
                     qz = math.sin(error_yaw/2.0)
@@ -378,7 +374,7 @@ class MarkerDetection(object):
                     setpoint[0] = target_x#self.current_pose.pose.position.x + (setpoint[0] - self.current_pose.pose.position.x)*0.05
                     setpoint[1] = target_y#self.current_pose.pose.position.y + (setpoint[1] - self.current_pose.pose.position.y)*0.05
                     setpoint[2] = self.current_pose.pose.position.z + (setpoint[2] - self.current_pose.pose.position.z)*0.05
-                    rospy.loginfo(f"Mean setpoint: {setpoint}")
+                    # rospy.loginfo(f"Mean setpoint: {setpoint}")
                     self.target_pose.pose.position.x = setpoint[0]
                     self.target_pose.pose.position.y = setpoint[1]
                     self.target_pose.pose.position.z = setpoint[2]        
@@ -387,7 +383,7 @@ class MarkerDetection(object):
                     #visualize
                     marker = self.make_cube_marker(cross_pos_3d, (0.0, 0.0, 1.0), 0.4)
                     self.cross_marker_pub.publish(marker)
-                    rospy.loginfo(f"Mean cross marker: {cross_pos_3d}")
+                    # rospy.loginfo(f"Mean cross marker: {cross_pos_3d}")
                     
                     # yaw 계산
                     error_yaw = math.atan2(cross_pos_3d[1] - self.current_pose.pose.position.y, cross_pos_3d[0] - self.current_pose.pose.position.x)
@@ -424,13 +420,18 @@ class MarkerDetection(object):
                     setpoint = self.cal_approch_setpoint(cross_pos_3d, other_pos_3d, drone_pos_3d, offset=self.offset)
                     self.setpoint_list.append(setpoint)
 
+                    # if np.linalg.norm(drone_pos_3d - setpoint) < 0.1:
+                    #     self.counter += 1
+                    # if self.counter > 50:
+                    #     call_drone_command(5)
+                        
                     
                     cv2.putText(rgb_frame, f'inference time : {time.time() - start:.3f}', (0, 50), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(0, 0, 255), thickness=2)
                     cv2.rectangle(rgb_frame, (int(xyxy[0]), int(xyxy[1])), (int(xyxy[2]), int(xyxy[3])), color=(0, 255, 0), thickness=2)
                     cv2.putText(rgb_frame, f'{xyxy[4]:.3f}', (int(xyxy[0]), int(xyxy[1])), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(0, 255, 0), thickness=2)
                     #rospy.loginfo(f"setpoint: {setpoint}")
                     #rospy.loginfo(f"get_2d: {self.get_2d_coord(setpoint)}")
-                    #cv2.line(rgb_frame, (int(cross_pos[0]), int(cross_pos[1])), self.get_2d_coord(setpoint), (255, 0, 0), thickness=3)
+                    # cv2.line(rgb_frame, (int(cross_pos[0]), int(cross_pos[1])), self.get_2d_coord(setpoint), (255, 0, 0), thickness=3)
                     # crossmarker break()
                     break
 
@@ -438,6 +439,7 @@ class MarkerDetection(object):
                 self.target_pose_pub.publish(self.target_pose)
                 #rospy.loginfo(f"target pose: {self.target_pose}")
             try:
+                cv2.putText(rgb_frame, f"Mission : {int(self.mission)} \"{self.mission_rep}\"", (0, 25), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(0, 0, 0), thickness=2)
                 self.image_pub.publish(bridge.cv2_to_imgmsg(rgb_frame, "rgb8"))
             except CvBridgeError as e:
                 print(e)
