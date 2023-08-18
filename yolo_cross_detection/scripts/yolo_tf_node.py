@@ -424,11 +424,6 @@ class MarkerDetection(object):
                     setpoint = self.cal_approch_setpoint(cross_pos_3d, other_pos_3d, drone_pos_3d, offset=self.offset)
                     self.setpoint_list.append(setpoint)
 
-                    if np.linalg.norm(drone_pos_3d - setpoint) < 0.1:
-                        self.counter += 1
-                    if self.counter > 50:
-                        call_drone_command(5)
-                        
                     
                     cv2.putText(rgb_frame, f'inference time : {time.time() - start:.3f}', (0, 50), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(0, 0, 255), thickness=2)
                     cv2.rectangle(rgb_frame, (int(xyxy[0]), int(xyxy[1])), (int(xyxy[2]), int(xyxy[3])), color=(0, 255, 0), thickness=2)
