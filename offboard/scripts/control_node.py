@@ -238,13 +238,13 @@ class ControlClass(object):
             self.resp.mode = 'Avoidance Mode'
             self.resp.res = True
         elif self.cmd_state == 2:
-            self.resp.mode = 'Building Searching Mode'
+            self.resp.mode = 'Building Search Mode'
             self.resp.res = True
         elif self.cmd_state == 3:
-            self.resp.mode = 'Cross Detection Mode'
+            self.resp.mode = 'Cross Marker Approch Mode'
             self.resp.res = True
         elif self.cmd_state == 4:
-            self.resp.mode = 'Cargo Launching Mode'
+            self.resp.mode = 'Cargo Launch Mode'
             self.resp.res = True
         elif self.cmd_state == 5:
             self.resp.mode = 'Of course I Still Love You'

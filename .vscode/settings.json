@@ -11,5 +11,6 @@
 		"unordered_map": "cpp",
 		"unordered_set": "cpp",
 		"iterator": "cpp"
-	}
+	},
+	"cmake.configureOnOpen": true
 }

@@ -294,23 +294,26 @@ class MarkerDetection(object):
         marker2.type = Marker.LINE_STRIP
         marker2.action = Marker.ADD
         marker2.color.a = 1.0
+        marker2.color.r = 1.0
+        marker2.color.g = 1.0
         marker2.color.b = 1.0
-        marker2.scale.x = 1.0
+        marker2.scale.x = 0.1
 
-        marker2.points=[]
-        samples = 20
+        points = []
+        samples = 50
         for i in range(samples):
-            x = radius * math.cos(math.pi * 2.0 / samples)
-            y = radius * math.sin(math.pi * 2.0 / samples)
+            x = pos[0] + radius * math.cos(math.pi * 2.0 * float(i) / float(samples))
+            y = pos[1] + radius * math.sin(math.pi * 2.0 * float(i) / float(samples))
             z = pos[2]
-            marker2.points.append(Point(x, y, z))
+            points.append(Point(x, y, z))
+        marker2.points = points
         return marker2
 
     def calc_attractive_force(self, x, y, gx, gy):
         e_x, e_y = gx-x, gy-y
         distance = np.linalg.norm([e_x, e_y])
 
-        self.Kp_att = distance * 0.1
+        self.Kp_att = distance * 0.2
         att_x = self.Kp_att * e_x/distance
         att_y = self.Kp_att * e_y/distance
 
@@ -441,8 +444,8 @@ class MarkerDetection(object):
                     #setpoint 계산
                     setpoint = self.cal_approch_setpoint(cross_pos_3d, other_pos_3d, drone_pos_3d, offset=self.offset)
                     self.setpoint_list.append(setpoint)
-
-                    if np.linalg.norm(drone_pos_3d - setpoint) < 0.3:
+                    setpoint_distance = np.linalg.norm(drone_pos_3d - setpoint)
+                    if setpoint_distance < 0.3:
                         self.counter += 1
                     if self.counter > 10:
                         auto_service.call_drone_command(4)
@@ -451,6 +454,7 @@ class MarkerDetection(object):
                     cv2.putText(rgb_frame, f'inference time : {time.time() - start:.3f}', (0, 50), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(0, 0, 255), thickness=2)
                     cv2.rectangle(rgb_frame, (int(xyxy[0]), int(xyxy[1])), (int(xyxy[2]), int(xyxy[3])), color=(0, 255, 0), thickness=2)
                     cv2.putText(rgb_frame, f'{xyxy[4]:.3f}', (int(xyxy[0]), int(xyxy[1])), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(0, 255, 0), thickness=2)
+                    cv2.putText(rgb_frame, f'setpoint distance : {setpoint_distance:.2f} : {self.counter}/10', (0, 75), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(255, 128, 0), thickness=2)
                     #rospy.loginfo(f"setpoint: {setpoint}")
                     #rospy.loginfo(f"get_2d: {self.get_2d_coord(setpoint)}")
                     try:
