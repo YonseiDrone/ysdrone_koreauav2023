@@ -2,7 +2,7 @@
 import rospy
 import math
 import tf
-from std_msgs.msg import Float32
+from std_msgs.msg import Float32, String
 from geometry_msgs.msg import PoseStamped, Twist
 from visualization_msgs.msg import MarkerArray, Marker
 from mavros_msgs.msg import State, PositionTarget
@@ -10,6 +10,7 @@ from tf.transformations import euler_from_quaternion, quaternion_from_euler
 from dynamic_reconfigure.client import Client
 
 from ysdrone_msgs.srv import *
+from koreauav_utils import auto_service
 #====================================================================
 # Mathmatical conversion functions
 def rad2deg(radian):
@@ -89,6 +90,7 @@ class ControlClass(object):
         self.isly_destination_command_marker_array = MarkerArray()
         self.desired_landing = PositionTarget()
         self.mission_num = Float32()
+        self.mission_rep = String()
         self.RL_target_vel = Twist()
         self.launch_setposition = PoseStamped()
         self.launch_setposition_marker = Marker()
@@ -98,6 +100,11 @@ class ControlClass(object):
         self.building_target = PoseStamped()
         self.building_target_marker = Marker()
         self.building_target_marker_array = MarkerArray()
+        self.move = PoseStamped()
+        self.move_marker = Marker()
+        self.move_marker_array = MarkerArray()
+        self.resp = DroneCommandResponse()
+        self.resp.mode = 'Takeoff Mode'
     
         #Subscriber
         self.state_sub = rospy.Subscriber('/mavros/state', State, self.state_cb)
@@ -109,6 +116,7 @@ class ControlClass(object):
         self.launch_setposition_sub = rospy.Subscriber('/launch_setposition', PoseStamped, self.launch_setposition_cb)
         self.avoidance_pos_sub = rospy.Subscriber('/avoidance/setpoint_position/local', PoseStamped, self.avoidance_pos_cb)
         self.building_target_sub = rospy.Subscriber('/building/search/target_pose', PoseStamped, self.building_target_cb)
+        self.move_sub = rospy.Subscriber('/move_to_launch', PoseStamped, self.move_cb)
 
         #Publisher
         self.target_pose_pub = rospy.Publisher('/mavros/setpoint_position/local', PoseStamped, queue_size=1)
@@ -117,6 +125,7 @@ class ControlClass(object):
         self.desired_landing_pub = rospy.Publisher('/mavros/setpoint_raw/local', PositionTarget, queue_size=1)
         
         self.mission_pub = rospy.Publisher('/mission', Float32, queue_size=1)
+        self.mission_rep_pub = rospy.Publisher('/mission_rep', String, queue_size=1)
     
     #=====================TODO=======================
     # MISSION!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!11
@@ -138,10 +147,21 @@ class ControlClass(object):
         elif self.cmd_state==3 and self.launch_setposition.pose.position.z != 0:
             rospy.loginfo(f"launch_setposition")
             self.avoidance = self.launch_setposition
+        elif self.cmd_state==4 and self.move.pose.position.z != 0:
+            self.avoidance = self.move
+            rospy.loginfo(self.avoidance)
 
-        rospy.loginfo(self.avoidance)
+        # rospy.loginfo(self.avoidance)
         self.target_pose_pub.publish(self.avoidance)
     #====================================================
+
+    def move_cb(self, msg):
+        self.move = msg
+        self.move_marker.pose.position.x = msg.pose.position.x
+        self.move_marker.pose.position.y = msg.pose.position.y
+        self.move_marker.pose.position.z = msg.pose.position.z
+        self.move_marker_array.markers.clear()
+        self.move_marker_array.markers.append(self.move_marker)
 
     def building_target_cb(self, msg):
         self.building_target = msg
@@ -231,13 +251,13 @@ class ControlClass(object):
             self.resp.mode = 'Avoidance Mode'
             self.resp.res = True
         elif self.cmd_state == 2:
-            self.resp.mode = 'Building Searching Mode'
+            self.resp.mode = 'Building Search Mode'
             self.resp.res = True
         elif self.cmd_state == 3:
-            self.resp.mode = 'Cross Detection Mode'
+            self.resp.mode = 'Cross Marker Approch Mode'
             self.resp.res = True
         elif self.cmd_state == 4:
-            self.resp.mode = 'Cargo Launching Mode'
+            self.resp.mode = 'Cargo Launch Mode'
             self.resp.res = True
         elif self.cmd_state == 5:
             self.resp.mode = 'Of course I Still Love You'
@@ -265,11 +285,20 @@ class ControlClass(object):
     
     def main_controller(self, e):
         self.time_now = rospy.Time.now()
+        self.mission_num.data = self.cmd_state
+        self.mission_pub.publish(self.mission_num)
+        self.mission_rep.data = self.resp.mode
+        self.mission_rep_pub.publish(self.mission_rep)
+
+
         if self.cmd_state == 0:
             self.target_pose.pose.position.x = 0
             self.target_pose.pose.position.y = 0
-            self.target_pose.pose.position.z = 4.2
+            self.target_pose.pose.position.z = 7.2
             self.target_pose_pub.publish(self.target_pose)
+
+            if self.current_pose.pose.position.z - self.target_pose.pose.position.z< 0.1:
+                auto_service.call_drone_command(1)
         # Mission 1(Obstacle Avoidance Planner)
         if self.cmd_state == 1:
             new_config = {"obstacle_cost_param_": 5}
@@ -280,26 +309,21 @@ class ControlClass(object):
 
         # Mission 2(Building Searching)
         if self.cmd_state == 2:
-            self.mission_num.data = self.cmd_state
-            self.mission_pub.publish(self.mission_num)
             self.avoidance_pos_pub.publish(self.building_target_marker_array)
             #rospy.loginfo(f"Mission published to [Building Search] data: {self.mission_num.data}")
 
         
         # Mission 3(Cross Detection Mode)
         if self.cmd_state == 3:
-            self.mission_num.data = self.cmd_state
-            self.mission_pub.publish(self.mission_num)
             new_config = {"obstacle_cost_param_": 1}
             config = self.dynamic_client.update_configuration(new_config)
-
             self.avoidance_pos_pub.publish(self.launch_setposition_marker_array) 
             #rospy.loginfo(f"Mission published to [Cross Detection] data: {self.mission_num.data}")
 
 
         # Mission 4(Cargo Launching Mode)
         if self.cmd_state == 4:
-            pass
+            self.avoidance_pos_pub.publish(self.move_marker_array)
 
         # Mission 5(Of course I Still Love you)
         if self.cmd_state == 5:

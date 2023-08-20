@@ -1,6 +1,6 @@
 <launch>
 	<param name="/srv_mode" value="true" />
-	<param name="/destination_z" value="4.0" />
+	<param name="/destination_z" value="7.0" />
 
 	<!-- GPS to ENU-->
 	<include file="$(find koreauav_utils)/launch/yaml_to_gps.launch"/>

@@ -6,13 +6,11 @@ import math
 from geometry_msgs.msg import PoseStamped, PointStamped
 from mavros_msgs.msg import State
 from ysdrone_msgs.srv import *
+from std_msgs.msg import Float32
+from koreauav_utils import auto_service
 
 class PathClass(object):
     def __init__(self):
-        if rospy.has_param('srv_mode'):
-            self.srv_mode = rospy.get_param('srv_mode')
-        else:
-            self.srv_mode = True
         self.destination_cnt = 0
         
         self.current_state = State()
@@ -26,10 +24,13 @@ class PathClass(object):
         self.destination_2_pose = PointStamped()
         self.destination_3_pose = PointStamped()
 
+        self.mission = 0
+
         #Subscriber
         self.state_sub = rospy.Subscriber('/mavros/state', State, self.state_cb)
         self.pose_sub = rospy.Subscriber('/mavros/local_position/pose', PoseStamped, self.pose_cb)
-        
+        self.mission_sub = rospy.Subscriber('/mission', Float32, self.mission_cb)
+
         if rospy.has_param('/destination_z'):
             self.destination_z = rospy.get_param('/destination_z')
         else:
@@ -44,6 +45,9 @@ class PathClass(object):
         #Publisher
         self.destination_cmd_pub = rospy.Publisher('/destination_command', PoseStamped, queue_size=1)
 
+
+    def mission_cb(self, msg):
+        self.mission = msg.data
 
     def state_cb(self, msg):
         self.current_state = msg
@@ -97,16 +101,13 @@ class PathClass(object):
             #rospy.loginfo(f"Waypoint 3 - x: {self.destination_3_pose.point.x}, y: {self.destination_3_pose.point.y}, z: {self.destination_z}")
             #=============================================================================================================
 
-            # if self.destination_cnt < len(self.destination_positions):
-            #     self.destination_cmd.pose.position.x, self.destination_cmd.pose.position.y, self.destination_cmd.pose.position.z = self.destination_positions[self.destination_cnt]
-            #     self.destination_cmd_pub.publish(self.destination_cmd)
-            # else:
-            #     if self.srv_mode is False:
-            #         # Auto Mode
-            #         # Call Building Searching Mode
-            #         self.call_drone_command(2)
-            self.destination_cmd.pose.position.x, self.destination_cmd.pose.position.y, self.destination_cmd.pose.position.z = self.destination_positions[self.destination_cnt]
-            self.destination_cmd_pub.publish(self.destination_cmd)
+            if self.destination_cnt < len(self.destination_positions):
+                self.destination_cmd.pose.position.x, self.destination_cmd.pose.position.y, self.destination_cmd.pose.position.z = self.destination_positions[self.destination_cnt]
+                self.destination_cmd_pub.publish(self.destination_cmd)
+            else:
+                if self.mission == 1:
+                    auto_service.call_drone_command(2)
+
 
             if self.calc_xy_err(self.destination_cmd, self.current_pose) < 0.3 and self.calc_z_err(self.destination_cmd, self.current_pose) < 0.2:
                 # TODO 대회에서 요구하는 정확도 확인 && 실제로 어느정도 정확하게 나오는지 확인 필요.
@@ -115,18 +116,6 @@ class PathClass(object):
                 # if self.destination_cnt > 4:
                 #     self.destination_cnt = 0
             
-
-
-    def call_drone_command(self, data):
-            rospy.wait_for_service('/drone_command')
-            try:
-                service = rospy.ServiceProxy('/drone_command', DroneCommand)
-                request = DroneCommandRequest()
-                request.command = data
-                response = service(request)
-                return response
-            except rospy.ServiceException as e:
-                print(f"Service call failed: {e}")
 
 if __name__ == "__main__":
     rospy.init_node('path_node', anonymous=True)

@@ -6,6 +6,8 @@ import math
 from geometry_msgs.msg import PoseStamped, PointStamped
 from mavros_msgs.msg import State
 from ysdrone_msgs.srv import *
+from std_msgs.msg import Float32
+from koreauav_utils import auto_service
 
 class IslyPath(object):
     def __init__(self):
@@ -21,11 +23,13 @@ class IslyPath(object):
         self.destination_3_pose = PointStamped()
 
         self.destination_cnt = 0
+        self.mission = 0
 
         #Subscriber
         self.state_sub = rospy.Subscriber('/mavros/state', State, self.state_cb)
         self.pose_sub = rospy.Subscriber('/mavros/local_position/pose', PoseStamped, self.pose_cb)
-        
+        self.mission_sub = rospy.Subscriber('/mission', Float32, self.mission_cb)
+
         if rospy.has_param('/destination_z'):
             self.destination_z = rospy.get_param('/destination_z')
         else:
@@ -41,6 +45,9 @@ class IslyPath(object):
         #Publisher
         self.isly_destination_pub = rospy.Publisher('/isly_destination_command', PoseStamped, queue_size=50)
     
+    def mission_cb(self, msg):
+        self.mission = msg.data
+
     def state_cb(self, msg):
         self.current_state = msg
     
@@ -94,7 +101,12 @@ class IslyPath(object):
             #rospy.loginfo(f"Waypoint 3 - x: {self.destination_3_pose.point.x}, y: {self.destination_3_pose.point.y}, z: {self.destination_z}")
             #==============================================================================================================
 
-            self.isly_destination.pose.position.x, self.isly_destination.pose.position.y, self.isly_destination.pose.position.z = self.destination_positions[self.destination_cnt]
+            if self.destination_cnt < len(self.destination_positions):
+                self.isly_destination.pose.position.x, self.isly_destination.pose.position.y, self.isly_destination.pose.position.z = self.destination_positions[self.destination_cnt]
+                self.isly_destination_pub.publish(self.isly_destination)
+            else:
+                if self.mission == 5:
+                    auto_service.call_drone_command(9)
 
             if self.calc_xy_err(self.isly_destination, self.current_pose) < 0.3 and self.calc_z_err(self.isly_destination, self.current_pose) < 0.2:
                 self.destination_cnt += 1
@@ -103,23 +115,6 @@ class IslyPath(object):
                 #     self.destination_cnt = 0
             
             self.isly_destination_pub.publish(self.isly_destination)
-
-            # if self.destination_cnt >= len(self.destination_positions):
-                # if self.srv_mode is False:
-                    # Auto Mode
-                    # Call Building Searching Mode
-                    # self.call_drone_command(6)
-                    
-    def call_drone_command(self, data):
-            rospy.wait_for_service('/drone_command')
-            try:
-                service = rospy.ServiceProxy('/drone_command', DroneCommand)
-                request = DroneCommandRequest()
-                request.command = data
-                response = service(request)
-                return response
-            except rospy.ServiceException as e:
-                print(f"Service call failed: {e}")
 
 
 if __name__ == "__main__":
