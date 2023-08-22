@@ -56,7 +56,7 @@ class CargoLaunch(object):
 		self.launch_setposition = PoseStamped()
 		self.launch_setposition_list = []
 		self.move = PoseStamped()
-		self.offset = 1.0
+		self.cargo_offset = rospy.get_param("cargo_offset")
 
 		self.state_sub = rospy.Subscriber('/mavros/state', State, self.state_cb)
 		self.pose_sub = rospy.Subscriber('/mavros/local_position/pose', PoseStamped, self.pose_cb)
@@ -94,7 +94,7 @@ class CargoLaunch(object):
 		if self.mission == 4:
 			self.move.pose.position.x = self.launch_setposition_list[-1][0]
 			self.move.pose.position.y = self.launch_setposition_list[-1][1]
-			self.move.pose.position.z = self.launch_setposition_list[-1][2] + self.offset
+			self.move.pose.position.z = self.launch_setposition_list[-1][2] + self.cargo_offset
 			self.move.pose.orientation.x = self.launch_setposition_list[-1][3]
 			self.move.pose.orientation.y = self.launch_setposition_list[-1][4]
 			self.move.pose.orientation.z = self.launch_setposition_list[-1][5]

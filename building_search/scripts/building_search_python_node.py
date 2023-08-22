@@ -65,7 +65,9 @@ class BuildingSearch(object):
         self.last_goal_x = rospy.get_param("/destination_3_pose_x", 80.0)
         self.last_goal_y = rospy.get_param("/destination_3_pose_y", -41.0)
         self.last_goal_z = rospy.get_param("/destination_z", 3)
-        self.search_height = 2.5
+        self.search_height = rospy.get_param('search_height')
+        self.building_search_count = rospy.get_param("building_search_count")
+        self.building_stack_count = rospy.get_param("building_stack_count")
 
         # ROS publisher & subscriber
         self.cloud_sub = rospy.Subscriber('/local_pointcloud', PointCloud2, self.cloud_cb)
@@ -142,7 +144,7 @@ class BuildingSearch(object):
             else:
                 rospy.logwarn("Empty input cloud!")
 
-            if len(self.building_centroid) < 15:
+            if len(self.building_centroid) < self.building_search_count:
                 self.target_pose.pose.position.x = self.last_goal_x
                 self.target_pose.pose.position.y = self.last_goal_y
                 self.target_pose.pose.position.z = self.search_height
@@ -155,7 +157,7 @@ class BuildingSearch(object):
                 self.target_pose.pose.orientation.w = qw
                 self.target_pose_pub.publish(self.target_pose)
             
-            elif 15<=len(self.building_centroid)<=30:
+            elif self.building_search_count<=len(self.building_centroid)<=self.building_search_count+self.building_stack_count:
                 self.target_pose.pose.position.x = self.last_goal_x
                 self.target_pose.pose.position.y = self.last_goal_y
                 self.target_pose.pose.position.z = self.search_height
@@ -188,7 +190,7 @@ class BuildingSearch(object):
                 #rospy.loginfo(f"centroid: {self.centroid}")
                 self.centroid_pub.publish(self.centroid)
 
-                if len(self.building_centroid) == 40:
+                if len(self.building_centroid) == self.building_search_count+self.building_stack_count+10:
                     auto_service.call_drone_command(3)
 
 
