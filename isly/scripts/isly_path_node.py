@@ -117,23 +117,7 @@ class IslyPath(object):
             
             self.isly_destination_pub.publish(self.isly_destination)
 
-            # if self.destination_cnt >= len(self.destination_positions):
-                # if self.srv_mode is False:
-                    # Auto Mode
-                    # Call Building Searching Mode
-                    # self.call_drone_command(6)
                     
-    def call_drone_command(self, data):
-            rospy.wait_for_service('/drone_command')
-            try:
-                service = rospy.ServiceProxy('/drone_command', DroneCommand)
-                request = DroneCommandRequest()
-                request.command = data
-                response = service(request)
-                return response
-            except rospy.ServiceException as e:
-                print(f"Service call failed: {e}")
-
 
 if __name__ == "__main__":
     rospy.init_node('isly_path_node', anonymous=True)

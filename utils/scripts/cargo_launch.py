@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 import rospy
-import math
+import math, time
 from mavros_msgs.srv import CommandLong
 from mavros_msgs.msg import OverrideRCIn
 from geometry_msgs.msg import PoseStamped
@@ -57,7 +57,7 @@ class CargoLaunch(object):
 		self.launch_setposition = PoseStamped()
 		self.launch_setposition_list = []
 		self.move = PoseStamped()
-		self.offset = 1.0
+		self.cargo_offset = rospy.get_param("cargo_offset")
 
 		self.state_sub = rospy.Subscriber('/mavros/state', State, self.state_cb)
 		self.pose_sub = rospy.Subscriber('/mavros/local_position/pose', PoseStamped, self.pose_cb)
@@ -65,6 +65,9 @@ class CargoLaunch(object):
 		self.launch_setposition_sub = rospy.Subscriber('/launch_setposition', PoseStamped, self.launch_setposition_cb)
 
 		self.move_pub = rospy.Publisher('/move_to_launch', PoseStamped, queue_size=1)
+		self.servo1 = False
+		self.servo2 = False
+		self.start = time.time()
 
 	def launch_setposition_cb(self, msg):
 		self.launch_setposition = msg
@@ -97,7 +100,7 @@ class CargoLaunch(object):
 			rospy.loginfo(self.launch_setposition_list[-1])
 			self.move.pose.position.x = self.launch_setposition_list[-1][0]
 			self.move.pose.position.y = self.launch_setposition_list[-1][1]
-			self.move.pose.position.z = self.launch_setposition_list[-1][2] + self.offset
+			self.move.pose.position.z = self.launch_setposition_list[-1][2] + self.cargo_offset
 			self.move.pose.orientation.x = self.launch_setposition_list[-1][3]
 			self.move.pose.orientation.y = self.launch_setposition_list[-1][4]
 			self.move.pose.orientation.z = self.launch_setposition_list[-1][5]
@@ -105,11 +108,21 @@ class CargoLaunch(object):
 			self.move_pub.publish(self.move)
 
 			if self.calc_xy_err(self.move, self.current_pose)<0.1 and self.calc_z_err(self.move, self.current_pose)<0.1:
-				self.MAV_CMD_DO_SET_ACTUATOR()
-				auto_service.call_drone_command(5)
+				if not self.servo1:
+					self.start = time.time()
+					self.servo1 = self.MAV_CMD_DO_SET_ACTUATOR_1()
+				elif not self.servo2 and time.time() - self.start < 4:
+					pass
+				elif not self.servo2:
+					self.start = time.time()
+					self.servo2 = self.MAV_CMD_DO_SET_ACTUATOR_2()
+				elif time.time() - self.start < 4:
+					pass
+				else:
+					auto_service.call_drone_command(5)
 
-	def MAV_CMD_DO_SET_ACTUATOR(self):
-		rospy.loginfo('Waiting for server...')
+	def MAV_CMD_DO_SET_ACTUATOR_1(self):
+		# rospy.loginfo('Waiting for server...')
 		rospy.wait_for_service('/mavros/cmd/command')
 		try:
 			servo_control_srv = rospy.ServiceProxy('/mavros/cmd/command', CommandLong)
@@ -117,15 +130,40 @@ class CargoLaunch(object):
 			msg = CommandLong()
 			resp = servo_control_srv(broadcast=False, command=187, confirmation=False, param1=1, param2=0, param3=0, param4=0, param5=1, param6=1, param7=0)
 	
-			rospy.loginfo('Try service call...')
+			# rospy.loginfo('Try service call...')
 			if resp.success:
-				print("Servo controlled successfully")
-				print(f"result: {resp.result}")
+				rospy.loginfo("Servo 1 controlled successfully")
+				# print(f"result: {resp.result}")
 			else:
-				print("Failed to control servo")
+				rospy.loginfo("Failed to control servo 1")
+			# return resp.success
+			return True
 
 		except rospy.ServiceException as e:
 			print("Service call failed: %s" % e)
+			return False
+	
+	def MAV_CMD_DO_SET_ACTUATOR_2(self):
+		# rospy.loginfo('Waiting for server...')
+		rospy.wait_for_service('/mavros/cmd/command')
+		try:
+			servo_control_srv = rospy.ServiceProxy('/mavros/cmd/command', CommandLong)
+	
+			msg = CommandLong()
+			resp = servo_control_srv(broadcast=False, command=187, confirmation=False, param1=1, param2=0, param3=0, param4=0, param5=1, param6=1, param7=0)
+	
+			# rospy.loginfo('Try service call...')
+			if resp.success:
+				rospy.loginfo("Servo 2 controlled successfully")
+				# print(f"result: {resp.result}")
+			else:
+				rospy.loginfo("Failed to control servo 2")
+			# return resp.success
+			return True
+
+		except rospy.ServiceException as e:
+			print("Service call failed: %s" % e)
+			return False
 
 
 	

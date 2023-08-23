@@ -120,18 +120,6 @@ class PathClass(object):
                 #     self.destination_cnt = 0
             
 
-
-    def call_drone_command(self, data):
-            rospy.wait_for_service('/drone_command')
-            try:
-                service = rospy.ServiceProxy('/drone_command', DroneCommand)
-                request = DroneCommandRequest()
-                request.command = data
-                response = service(request)
-                return response
-            except rospy.ServiceException as e:
-                print(f"Service call failed: {e}")
-
 if __name__ == "__main__":
     rospy.init_node('path_node', anonymous=True)
     try:

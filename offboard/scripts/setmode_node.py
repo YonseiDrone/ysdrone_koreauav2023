@@ -1,6 +1,6 @@
 #! /usr/bin/env python3
 import rospy
-
+from std_msgs.msg import Float32
 from mavros_msgs.msg import State 
 from mavros_msgs.srv import CommandBool, SetMode
 from geometry_msgs.msg import PoseStamped
@@ -16,7 +16,8 @@ class SetmodeClass(object):
         #Subscriber
         self.state_sub = rospy.Subscriber("/mavros/state", State, self.state_cb)
         self.pose_sub = rospy.Subscriber("/mavros/local_position/pose", PoseStamped, self.pose_cb)
-        
+        self.mission_sub = rospy.Subscriber("/mission", Float32, self.mission_cb)
+
         self.target_pose_pub = rospy.Publisher("/mavros/setpoint_position/local", PoseStamped, queue_size=1)
         #Service
         rospy.loginfo('-------------Waiting for services to connect--------------')
@@ -30,6 +31,11 @@ class SetmodeClass(object):
 
     def pose_cb(self, msg):
         self.current_pose = msg
+
+    def mission_cb(self, msg):
+        if msg.data == 11:
+            rospy.loginfo(f"Disarming activated")
+            self.land()
 
     def state_cb(self, msg):
         prev_state = self.current_state
@@ -72,7 +78,7 @@ class SetmodeClass(object):
 
     def land(self):
         try:
-            response = self.set_mode_client(base_mode = 0, custom_mode = "LAND")
+            response = self.set_mode_client(base_mode = 0, custom_mode = "AUTO.LAND")
         except rospy.ServiceException as e:
             rospy.loginfo("Service call failed : %s" %e)
         rospy.loginfo("Landing...")

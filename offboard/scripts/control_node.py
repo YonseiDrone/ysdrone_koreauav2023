@@ -131,16 +131,14 @@ class ControlClass(object):
     def avoidance_pos_cb(self, msg):
         self.avoidance = msg
         if self.cmd_state == 2 and self.building_target.pose.position.z != 0:
-            rospy.loginfo(f"Building_search")
             self.avoidance = self.building_target
-        elif self.cmd_state==3 and self.launch_setposition.pose.position.z != 0:
-            rospy.loginfo(f"launch_setposition")
+        elif self.cmd_state == 3 and self.launch_setposition.pose.position.z != 0:
             self.avoidance = self.launch_setposition
-        elif self.cmd_state==4 and self.move.pose.position.z != 0:
+        elif self.cmd_state == 4 and self.move.pose.position.z != 0:
             self.avoidance = self.move
             rospy.loginfo(self.avoidance)
-
-        self.target_pose_pub.publish(self.avoidance)
+        if self.cmd_state not in [9, 11]:
+            self.target_pose_pub.publish(self.avoidance)
 
     def move_cb(self, msg):
         self.move = msg
@@ -264,6 +262,9 @@ class ControlClass(object):
         elif self.cmd_state == 10:
             self.resp.mode = 'RL Landing with Aruco'
             self.resp.res = True
+        elif self.cmd_state == 11:
+            self.resp.mode = 'Landing Complete'
+            self.resp.res = True
         rospy.loginfo(f'Received request : {req.command} && Current Mode : {self.resp.mode} && Enable :{self.resp.res}')
         return self.resp
     
@@ -343,6 +344,10 @@ class ControlClass(object):
             self.target_pose_pub.publish(self.target_pose) 
             self.landing_velocity_pub.publish(self.RL_target_vel)
             rospy.loginfo(f"Velocity - x: {self.RL_target_vel.linear.x}, y: {self.RL_target_vel.linear.y}, z: {self.RL_target_vel.linear.z}")
+
+        # Mission 11(Land Complete)
+        if self.cmd_state == 11:
+            pass
 
 
 if __name__ == "__main__":
