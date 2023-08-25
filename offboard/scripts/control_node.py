@@ -127,32 +127,19 @@ class ControlClass(object):
         self.mission_pub = rospy.Publisher('/mission', Float32, queue_size=1)
         self.mission_rep_pub = rospy.Publisher('/mission_rep', String, queue_size=1)
     
-    #=====================TODO=======================
-    # MISSION!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!11
+  
     def avoidance_pos_cb(self, msg):
-        # self.avoidance = msg
-        # if self.cmd_state in [1,4,5]:
-        #     self.target_pose_pub.publish(self.avoidance)
-        # elif self.cmd_state == 2:
-        #     self.avoidance = self.building_target
-        #     self.target_pose_pub.publish(self.avoidance)
-        # elif self.cmd_state==3:
-        #     self.avoidance = self.launch_setposition
-        #     rospy.loginfo(self.avoidance)
-        #     self.target_pose_pub.publish(self.avoidance)
         self.avoidance = msg
-        if self.cmd_state == 2 and self.building_target.pose.position.z != 0:
-            rospy.loginfo(f"Building_search")
-            self.avoidance = self.building_target
-        elif self.cmd_state==3 and self.launch_setposition.pose.position.z != 0:
-            rospy.loginfo(f"launch_setposition")
-            self.avoidance = self.launch_setposition
-        elif self.cmd_state==4 and self.move.pose.position.z != 0:
-            self.avoidance = self.move
-            rospy.loginfo(self.avoidance)
 
-        # rospy.loginfo(self.avoidance)
-        self.target_pose_pub.publish(self.avoidance)
+        if self.cmd_state == 2 and self.building_target.pose.position.z != 0:
+            self.avoidance = self.building_target
+        elif self.cmd_state == 3 and self.launch_setposition.pose.position.z != 0:
+            self.avoidance = self.launch_setposition
+        elif self.cmd_state == 4 and self.move.pose.position.z != 0:
+            self.avoidance = self.move
+
+        if self.cmd_state not in [9, 11]:
+            self.target_pose_pub.publish(self.avoidance)
     #====================================================
 
     def move_cb(self, msg):
@@ -203,14 +190,6 @@ class ControlClass(object):
         self.desired_landing.yaw_rate = 1
 
     def destination_command_cb(self, msg):
-        # 여기 나중에 pre_destioination_command, destination_command 찍어서 디버깅해보자!!
-        # if (self.destination_command.pose.position.x != msg.pose.position.x) or (self.destination_command.pose.position.y != msg.pose.position.y) or (self.destination_command.pose.position.z != msg.pose.position.z):
-        #     self.pre_destination_command.pose.position.x = self.destination_command.pose.position.x
-        #     self.pre_destination_command.pose.position.y = self.destination_command.pose.position.y
-        #     self.pre_destination_command.pose.position.z = self.destination_command.pose.position.z
-        # self.destination_command.pose.position.x = msg.pose.position.x
-        # self.destination_command.pose.position.y = msg.pose.position.y
-        # self.destination_command.pose.position.z = msg.pose.position.z
         self.destination_command_marker.pose.position.x = msg.pose.position.x
         self.destination_command_marker.pose.position.y = msg.pose.position.y
         self.destination_command_marker.pose.position.z = msg.pose.position.z
@@ -225,13 +204,6 @@ class ControlClass(object):
         self.current_pose = msg
         
     def isly_destination_command_cb(self, msg):
-        # if (self.isly_destination_command.pose.position.x != msg.pose.position.x) or (self.isly_destination_command.pose.position.y != msg.pose.position.y) or (self.isly_destination_command.pose.position.z != msg.pose.position.z):
-        #     self.pre_isly_destination_command.pose.position.x = self.isly_destination_command.pose.position.x
-        #     self.pre_isly_destination_command.pose.position.y = self.isly_destination_command.pose.position.y
-        #     self.pre_isly_destination_command.pose.position.z = self.isly_destination_command.pose.position.z
-        # self.isly_destination_command.pose.position.x = msg.pose.position.x
-        # self.isly_destination_command.pose.position.y = msg.pose.position.y
-        # self.isly_destination_command.pose.position.z = msg.pose.position.z
         self.isly_destination_command_marker.pose.position.x = msg.pose.position.x
         self.isly_destination_command_marker.pose.position.y = msg.pose.position.y
         self.isly_destination_command_marker.pose.position.z = msg.pose.position.z
@@ -297,7 +269,7 @@ class ControlClass(object):
             self.target_pose.pose.position.z = 7.2
             self.target_pose_pub.publish(self.target_pose)
 
-            if self.current_pose.pose.position.z - self.target_pose.pose.position.z< 0.1:
+            if abs(self.target_pose.pose.position.z - self.current_pose.pose.position.z) < 0.1:
                 auto_service.call_drone_command(1)
         # Mission 1(Obstacle Avoidance Planner)
         if self.cmd_state == 1:
@@ -369,14 +341,8 @@ class ControlClass(object):
             rospy.loginfo(f"Velocity - x: {self.RL_target_vel.linear.x}, y: {self.RL_target_vel.linear.y}, z: {self.RL_target_vel.linear.z}")
             
         if self.cmd_state == 11:
-            msg = Float32()
-            msg.data = self.cmd_state
-            self.mission_pub.publish(msg)
+            pass
             
-
-
-
-
 
 
 if __name__ == "__main__":

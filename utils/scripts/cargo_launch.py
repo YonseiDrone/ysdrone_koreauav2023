@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 import rospy
-import math
+import math, time
 from mavros_msgs.srv import CommandLong
 from mavros_msgs.msg import OverrideRCIn
 from geometry_msgs.msg import PoseStamped
@@ -65,6 +65,10 @@ class CargoLaunch(object):
 
 		self.move_pub = rospy.Publisher('/move_to_launch', PoseStamped, queue_size=1)
 
+		self.servo1 = False
+		self.servo2 = False
+		self.start = time.time()
+
 	def launch_setposition_cb(self, msg):
 		self.launch_setposition = msg
 		self.launch_setposition_list.append([msg.pose.position.x, msg.pose.position.y, msg.pose.position.z, msg.pose.orientation.x, msg.pose.orientation.y, msg.pose.orientation.z, msg.pose.orientation.w])
@@ -102,33 +106,82 @@ class CargoLaunch(object):
 			self.move_pub.publish(self.move)
 
 			if self.calc_xy_err(self.move, self.current_pose)<0.1 and self.calc_z_err(self.move, self.current_pose)<0.1:
-				#TODO: Timer가 다시 돌아도 Actuator 제어가 한번만 되도록 mission을 0으로 초기화함. 
-				self.mission = 0
-				rospy.loginfo("Cargo Launching!!")
-				# self.MAV_CMD_DO_SET_ACTUATOR(0, 1)
-				# sleep(3)
-				self.MAV_CMD_DO_SET_ACTUATOR(1, 0)
-				# sleep(3)
-				auto_service.call_drone_command(5)
+				if not self.servo1:
+					self.start = time.time()
+					self.servo1 = self.MAV_CMD_DO_SET_ACTUATOR_1()
+				elif not self.servo2 and time.time() - self.start < 4:
+					pass
+				elif not self.servo2:
+					self.start = time.time()
+					self.servo2 = self.MAV_CMD_DO_SET_ACTUATOR_2()
+				elif time.time() - self.start < 4:
+					pass
+				else:
+					auto_service.call_drone_command(5)
 
-	def MAV_CMD_DO_SET_ACTUATOR(self, param_1, param_2):
-		rospy.loginfo('Waiting for server...')
+	def MAV_CMD_DO_SET_ACTUATOR_1(self):
+		# rospy.loginfo('Waiting for server...')
 		rospy.wait_for_service('/mavros/cmd/command')
 		try:
 			servo_control_srv = rospy.ServiceProxy('/mavros/cmd/command', CommandLong)
 	
 			msg = CommandLong()
-			resp = servo_control_srv(broadcast=False, command=187, confirmation=False, param1=param_1, param2=param_2, param3=0, param4=0, param5=1, param6=1, param7=0)
+			resp = servo_control_srv(broadcast=False, command=187, confirmation=False, param1=1, param2=0, param3=0, param4=0, param5=1, param6=1, param7=0)
 	
-			rospy.loginfo('Try service call...')
+			# rospy.loginfo('Try service call...')
 			if resp.success:
-				print("Servo controlled successfully")
-				print(f"result: {resp.result}")
+				rospy.loginfo("Servo 1 controlled successfully")
+				# print(f"result: {resp.result}")
 			else:
-				print("Failed to control servo")
+				rospy.loginfo("Failed to control servo 1")
+			return resp.success
 
 		except rospy.ServiceException as e:
 			print("Service call failed: %s" % e)
+			return False
+	
+	def MAV_CMD_DO_SET_ACTUATOR_2(self):
+		# rospy.loginfo('Waiting for server...')
+		rospy.wait_for_service('/mavros/cmd/command')
+		try:
+			servo_control_srv = rospy.ServiceProxy('/mavros/cmd/command', CommandLong)
+	
+			msg = CommandLong()
+			resp = servo_control_srv(broadcast=False, command=187, confirmation=False, param1=1, param2=0, param3=0, param4=0, param5=1, param6=1, param7=0)
+	
+			# rospy.loginfo('Try service call...')
+			if resp.success:
+				rospy.loginfo("Servo 2 controlled successfully")
+				# print(f"result: {resp.result}")
+			else:
+				rospy.loginfo("Failed to control servo 2")
+			return resp.success
+
+		except rospy.ServiceException as e:
+			print("Service call failed: %s" % e)
+			return False
+	
+
+		
+
+	# def MAV_CMD_DO_SET_ACTUATOR(self, param_1, param_2):
+	# 	rospy.loginfo('Waiting for server...')
+	# 	rospy.wait_for_service('/mavros/cmd/command')
+	# 	try:
+	# 		servo_control_srv = rospy.ServiceProxy('/mavros/cmd/command', CommandLong)
+	
+	# 		msg = CommandLong()
+	# 		resp = servo_control_srv(broadcast=False, command=187, confirmation=False, param1=param_1, param2=param_2, param3=0, param4=0, param5=1, param6=1, param7=0)
+	
+	# 		rospy.loginfo('Try service call...')
+	# 		if resp.success:
+	# 			print("Servo controlled successfully")
+	# 			print(f"result: {resp.result}")
+	# 		else:
+	# 			print("Failed to control servo")
+
+	# 	except rospy.ServiceException as e:
+	# 		print("Service call failed: %s" % e)
 
 
 if __name__ == "__main__":

@@ -18,21 +18,6 @@ from std_msgs.msg import Float32, String
 import pandas, time
 from koreauav_utils import auto_service
 
-def to_quaternion(yaw, pitch, roll):
-    cy = math.cos(yaw * 0.5)
-    sy = math.sin(yaw * 0.5)
-    cp = math.cos(pitch * 0.5)
-    sp = math.sin(pitch * 0.5)
-    cr = math.cos(roll * 0.5)
-    sr = math.sin(roll * 0.5)
-
-    qx = sr*cp*cy - cr*sp*sy
-    qy = cr*sp*cy + sr*cp*sy
-    qz = cr*cp*sy - sr*sp*cy
-    qw = cr*cp*cy + sr*sp*sy
-
-    return qx, qy, qz, qw
-
 def to_euler_angles(x, y, z, w):
     # roll(x-axis rotation)
     sinr_cosp = 2 * (w*x + y*z)
@@ -114,8 +99,8 @@ class MarkerDetection(object):
 
         # Parameter for Potential Field
         self.Kp_att = 0.1
-        self.Kp_rel = 48.0
-        self.obstacle_bound = 2.0
+        self.Kp_rel = 100.0
+
 
         rospy.on_shutdown(self.visualize)
 
@@ -167,10 +152,8 @@ class MarkerDetection(object):
     def get_3d_coord_fast(self, pixels, depth_frame):
 
         pixels = np.array(pixels).astype(np.int32)
-        #rospy.loginfo(f"pixels shape: {pixels.shape}")
         distances = depth_frame[pixels[:, 1], pixels[:, 0]]
-        #rospy.loginfo(f"distances: {distances}")
-        #rospy.loginfo(f"distances shapes: {distances.shape}")
+        rospy.loginfo(f"distance(200,200): {depth_frame[200, 200]}")
         #=====================Pixel to Camera======================================================================
         camera_coords = np.ones((4, len(distances)))
         camera_coords[2, :] = distances*0.001
@@ -325,12 +308,7 @@ class MarkerDetection(object):
         e_x, e_y = gx-x, gy-y
         distance = np.linalg.norm([e_x, e_y])
 
-        self.Kp_att = distance * 0.1
-        # if e_x<0.1 and e_y<0.1:
-        #     self.Kp_att = 0.01
-        # else:
-        #     self.Kp_att = 0.1
-
+        self.Kp_att = distance * 0.15
         att_x = self.Kp_att * e_x/distance
         att_y = self.Kp_att * e_y/distance
 
@@ -360,8 +338,6 @@ class MarkerDetection(object):
         try:
             if self.mission == 3:
                 start = time.time()
-                #rospy.loginfo(f"[YOLO TF] Mission #{self.mission} received")
-
                 resolution = (rgb_frame.shape[0], rgb_frame.shape[1])
                 results = self.model(cv2.resize(rgb_frame, (640, 640)))
                 xyxy = None # Initialize xyx with None
@@ -373,7 +349,7 @@ class MarkerDetection(object):
                     qz = math.sin(error_yaw/2.0)
                     qw = math.cos(error_yaw/2.0)
 
-                    if len(self.crosspos_list) == 6:
+                    if len(self.crosspos_list) == self.yolo_search_count-4:
                         self.circular_speed *= -1
 
                     self.target_pose.pose.position.x = self.centroid[0] + self.radius*math.cos(current_angle + self.circular_speed)
@@ -411,7 +387,6 @@ class MarkerDetection(object):
 
                     att_x, att_y = self.calc_attractive_force(self.current_pose.pose.position.x, self.current_pose.pose.position.y, goal_x, goal_y)
                     rep_x, rep_y = self.calc_repulsive_force(self.current_pose.pose.position.x, self.current_pose.pose.position.y, obstacle)
-                    rospy.loginfo(f"rep_x, rep_y: {rep_x}, {rep_y}")
 
                     pot_x = att_x + rep_x
                     pot_y = att_y + rep_y
@@ -421,7 +396,7 @@ class MarkerDetection(object):
 
                     setpoint[0] = target_x#self.current_pose.pose.position.x + (setpoint[0] - self.current_pose.pose.position.x)*0.1
                     setpoint[1] = target_y#self.current_pose.pose.position.y + (setpoint[1] - self.current_pose.pose.position.y)*0.1
-                    setpoint[2] = self.current_pose.pose.position.z + (setpoint[2] - self.current_pose.pose.position.z)*0.1
+                    setpoint[2] = self.current_pose.pose.position.z + (setpoint[2] - self.current_pose.pose.position.z)*0.2
                     # rospy.loginfo(f"Mean setpoint: {setpoint}")
                     self.target_pose.pose.position.x = setpoint[0]
                     self.target_pose.pose.position.y = setpoint[1]
@@ -475,13 +450,15 @@ class MarkerDetection(object):
 
                     cv2.putText(rgb_frame, f'inference time : {time.time() - start:.3f}', (0, 50), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(0, 0, 255), thickness=2)
                     cv2.rectangle(rgb_frame, (int(xyxy[0]), int(xyxy[1])), (int(xyxy[2]), int(xyxy[3])), color=(0, 255, 0), thickness=2)
+                    cv2.circle(rgb_frame, (200, 200), color=(0,255,0), thickness=1)
                     cv2.putText(rgb_frame, f'{xyxy[4]:.3f}', (int(xyxy[0]), int(xyxy[1])), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(0, 255, 0), thickness=2)
                     cv2.putText(rgb_frame, f'setpoint distance : {setpoint_distance:.2f} : {self.counter}/{self.setpoint_count}', (0, 75), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(255, 128, 0), thickness=2)
-                    #cv2.line(rgb_frame, (int(cross_pos[0]), int(cross_pos[1])), self.get_2d_coord(setpoint), (255, 0, 0), thickness=3)
+                    try:
+                        cv2.line(rgb_frame, (int(cross_pos[0]), int(cross_pos[1])), self.get_2d_coord(setpoint), (255, 0, 0), thickness=3)
+                    except:
+                        pass
                     # crossmarker break
                     break
-                
-                #rospy.loginfo(f"target pose: {self.target_pose}")
 
             try:
                 cv2.putText(rgb_frame, f"Mission : {int(self.mission)} \"{self.mission_rep}\"", (0, 25), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(0, 0, 0), thickness=2)

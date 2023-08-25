@@ -6,9 +6,10 @@ from geometry_msgs.msg import Twist, PoseStamped, TwistStamped
 from mavros_msgs.msg import State
 from mavros_msgs.srv import CommandBool, SetMode, CommandTOL
 from math import pow, atan2, sqrt, pi, degrees
-from std_msgs.msg import Float32MultiArray
+from std_msgs.msg import Float32MultiArray, Float32
 import onnxruntime, rospkg, onnx
 import numpy as np
+from koreauav_utils import auto_service
 
 
 class RLControl:
@@ -24,6 +25,7 @@ class RLControl:
         self.state_sub = rospy.Subscriber('/mavros/state', State, self.state_cb)
         self.pose_sub = rospy.Subscriber('/mavros/local_position/pose', PoseStamped, self.pose_cb)
         self.vel_sub = rospy.Subscriber('/mavros/local_position/velocity_local', TwistStamped, self.vel_cb)
+        self.mission_sub = rospy.Subscriber('/mission', Float32, self.mission_cb)
 
         #Publisher
         # Send the desired velocity of UAV to control_node in offboard package.
@@ -35,8 +37,8 @@ class RLControl:
         self.rate = rospy.Rate(self.hz)
         self.dt = (1.0 / self.hz)
 
-        self.scale = 0.2
-        self.z_offset = 0.02
+        self.scale = 0.4
+        self.z_offset = 0.0
         self.rospack = rospkg.RosPack()
         self.onnxPath = self.rospack.get_path('safety_landing') + '/scripts/DroneLanding-8078831.onnx'
 
@@ -44,6 +46,9 @@ class RLControl:
         onnx.checker.check_model(self.onnx_model)
         self.model = onnxruntime.InferenceSession(self.onnxPath)
  
+    def mission_cb(self, msg):
+        self.mission = msg.data
+
     def relative_dis_cb(self, msg):
         self.relative_dis = msg
         #rospy.loginfo(f"{self.relative_dis.data[0]}, {self.relative_dis.data[1]}, {self.relative_dis.data[2]}")
@@ -68,17 +73,21 @@ class RLControl:
         return state
 
     def action(self, e):
-        state = self.get_state()
-        ort_inputs = {self.model.get_inputs()[0].name: [state]}
-        action = self.model.run(None, ort_inputs)
-        action = np.multiply(action[2][0], [2, 2, 2])
-        action = action * self.scale
+        if self.mission == 9:
+            state = self.get_state()
+            ort_inputs = {self.model.get_inputs()[0].name: [state]}
+            action = self.model.run(None, ort_inputs)
+            action = np.multiply(action[2][0], [1, 1, 1])
+            action = action * self.scale
 
-        self.landing_velocity.linear.x = action[1]
-        self.landing_velocity.linear.y = action[0]
-        self.landing_velocity.linear.z = action[2]
-        #rospy.loginfo(f"action : {action}")
-        self.landing_vel_pub.publish(self.landing_velocity)
+            self.landing_velocity.linear.x = action[1]
+            self.landing_velocity.linear.y = action[0]
+            self.landing_velocity.linear.z = action[2]
+            #rospy.loginfo(f"action : {action}")
+            self.landing_vel_pub.publish(self.landing_velocity)
+
+            if self.current_pose.pose.position.z < 0.3:
+                auto_service.call_drone_command(11)
 
 
 if __name__ == "__main__":
