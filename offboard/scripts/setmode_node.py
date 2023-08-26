@@ -12,6 +12,7 @@ class SetmodeClass(object):
         self.current_pose = PoseStamped()
         self.target_pose = PoseStamped()
         self.service_timeout = 30
+        self.mission = Float32()
 
         #Subscriber
         self.state_sub = rospy.Subscriber("/mavros/state", State, self.state_cb)
@@ -33,7 +34,8 @@ class SetmodeClass(object):
         self.current_pose = msg
 
     def mission_cb(self, msg):
-        if msg.data == 11:
+        self.mission = msg.data
+        if self.mission == 11:
             rospy.loginfo(f"Disarming activated")
             self.land()
 
@@ -83,9 +85,12 @@ class SetmodeClass(object):
             rospy.loginfo("Service call failed : %s" %e)
         rospy.loginfo("Landing...")
         # wait until the drone is disarmed
-        while self.current_state.armed:
-            rospy.sleep(1)
-            rospy.loginfo("Disarming...")
+        if response.mode_sent:
+            # wait until the drone is disarmed
+            while self.current_state.armed:
+                rospy.loginfo("Disarming...")
+                self.arming_client(False)
+                rospy.sleep(1)
         rospy.loginfo("Landed")
 
 

@@ -1,23 +1,25 @@
 #!/usr/bin/env python3
 
+import math, time
 import rospy, rospkg
 import cv2, torch
-import numpy as np
-from scipy.linalg import svd
-from sensor_msgs.msg import Image, Imu
 from cv_bridge import CvBridge, CvBridgeError
-from ysdrone_msgs.srv import *
-from geometry_msgs.msg import Point
-import message_filters
-import math, time
+import numpy as np
+from scipy.linalg import svd, lstsq
+import pandas
+import matplotlib.pyplot as plt
+
 from geometry_msgs.msg import PoseStamped, Point
+from sensor_msgs.msg import Image, Imu
+from geometry_msgs.msg import Point
 from visualization_msgs.msg import Marker
 from mavros_msgs.msg import State
 from std_msgs.msg import Float32, String
-import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
-import pandas
+
+from ysdrone_msgs.srv import *
 from koreauav_utils import auto_service
+import message_filters
+from mpl_toolkits.mplot3d import Axes3D
 
 def to_euler_angles(x, y, z, w):
     # roll(x-axis rotation)
@@ -54,6 +56,7 @@ class MarkerDetection(object):
         self.dronepos_list = []
 
         self.counter = 0
+        self.id = 0
 
         #setpoint
         self.offset = rospy.get_param("yolo_offset") # Distance from the cross marker
@@ -104,6 +107,14 @@ class MarkerDetection(object):
                         [0.0, 0.0, 1.0]])
 
         rospy.on_shutdown(self.visualize)
+
+    def log_matrices(self, cross_pos_3d, other_pos_3d, drone_pos_3d, setpoint, id=0):
+        if id % 1 == 0:
+            d = f'/home/yonsei/logs/'
+            np.save(d + f'cross_pos_3d_{id}.npy', cross_pos_3d)
+            np.save(d + f'other_pos_3d_{id}.npy', other_pos_3d)
+            np.save(d + f'drone_pos_3d_{id}.npy', drone_pos_3d)
+            np.save(d + f'setpoint_{id}.npy', setpoint)
 
     def centroid_cb(self, msg):
         x, y, z = msg.pose.position.x, msg.pose.position.y, msg.pose.position.z
@@ -164,6 +175,10 @@ class MarkerDetection(object):
     def get_3d_coord_fast(self, pixels, depth_frame):
         pixels = np.array(pixels).astype(np.int32)
         distances = depth_frame[pixels[:, 1], pixels[:, 0]]
+
+        # Remove NaN values from numpy array 
+        depth_mean = np.mean(distances[~np.isnan(distances)])
+
         #=====================Image to Camera======================================================================
         camera_coords = np.ones((4, len(distances)))
         camera_coords[2, :] = distances
@@ -192,8 +207,9 @@ class MarkerDetection(object):
         enu_coords[1, :] += self.current_pose.pose.position.y
         enu_coords[2, :] += self.current_pose.pose.position.z
         enu_coords = enu_coords.T
-    
-        return enu_coords[:,0:3]
+
+    # TODO: Instead of return `depth_mean`, Use get_depth_mean
+        return enu_coords[:,0:3], depth_mean
     
     def get_2d_coord(self, position):
         # inverse tf of get_3d_coord
@@ -241,7 +257,7 @@ class MarkerDetection(object):
         return [int(u), int(v)]
     
     
-    def square_sampling(self, left_top, right_bottom, interval=5):
+    def square_sampling(self, left_top, right_bottom, interval=1):
         result = []
         x_start, y_start = left_top
         x_end, y_end = right_bottom
@@ -252,23 +268,37 @@ class MarkerDetection(object):
 
         return result
     
-    def cal_approch_setpoint(self, cross_pos, other_pos, drone_pos, offset):
+    def cal_approch_setpoint(self, cross_pos, other_pos, drone_pos, offset, depth_mean):
         points = np.array(other_pos)
 
         mean_point = np.mean(points, axis=0)
         centered_points = points - mean_point
-        # SVD(Singular Value Decomposition)
-        _, _, vh = svd(centered_points)
+        # # =====SVD(Singular Value Decomposition)======
+        _, _, vh = svd(centered_points[:, :2])
         normal_vector = vh[-1]
-        normal_vector[2] = 0
-        
+        rospy.loginfo(f"normal vector: {normal_vector}")
+        normal_vector = np.array([normal_vector[0], normal_vector[1], 0])
+        #========================PCA======================
+        # cov_matrix = np.cov(centered_points, rowvar=False)
+        # eigenvalues, eigenvectors = np.linalg.eigh(cov_matrix)
+        # normal_vector = eigenvectors[:, np.argmin(eigenvalues)]
+        # normal_vector[2] = 0
+        #================================================
+
+        #========================LSTSQ======================
+        # A = np.column_stack((other_pos, np.ones(other_pos.shape[0])))
+        # c, _, _, _ = lstsq(A, np.ones(other_pos.shape[0]))
+        # normal_vector = np.array([c[0], c[1], c[2]])
+        #======================================================
+
         cross_drone_vec = cross_pos - drone_pos
 
         if np.dot(normal_vector, cross_drone_vec) > 0:
             normal_vector = -normal_vector
 
         # drone setpoint
-        return cross_pos + normal_vector / np.linalg.norm(normal_vector) * offset
+        # return cross_pos + normal_vector / np.linalg.norm(normal_vector) * (offset + (offset - depth_mean)*0.3), vh
+        return cross_pos + normal_vector / np.linalg.norm(normal_vector) * offset, vh
 
     def make_cube_marker(self, pos, color, scale):
         #visualize
@@ -422,6 +452,8 @@ class MarkerDetection(object):
 
                 for volume in results.xyxy[0]:
                     xyxy = volume.numpy()
+                    if xyxy[4] < 0.5:
+                        break
                     #resize
                     xyxy[0] = xyxy[0] / 640 * resolution[1]
                     xyxy[2] = xyxy[2] / 640 * resolution[1]
@@ -433,9 +465,10 @@ class MarkerDetection(object):
                     #cross makrer sampling in pixel coord
                     other_pos = self.square_sampling((int(xyxy[0]), int(xyxy[1])), (int(xyxy[2]), int(xyxy[3])))
                     #tf to 3d
-                    cross_pos_3d = self.get_3d_coord_fast([cross_pos], depth_frame)[0]
+                    cross_pos_3d, _ = self.get_3d_coord_fast([cross_pos], depth_frame)
+                    cross_pos_3d = list(cross_pos_3d)[0]
                     self.crosspos_list.append(cross_pos_3d)
-                    other_pos_3d = self.get_3d_coord_fast(other_pos, depth_frame)
+                    other_pos_3d, other_depth_mean = self.get_3d_coord_fast(other_pos, depth_frame)
 
                     # drone position in 3D
                     drone_pos_3d = np.array([self.current_pose.pose.position.x, self.current_pose.pose.position.y, self.current_pose.pose.position.z])
@@ -443,19 +476,28 @@ class MarkerDetection(object):
                     self.dronepos_list.append(drone_pos_3d)
 
                     #setpoint 계산
-                    setpoint = self.cal_approch_setpoint(cross_pos_3d, other_pos_3d, drone_pos_3d, offset=self.offset)
-                    self.setpoint_list.append(setpoint)
-                    setpoint_distance = np.linalg.norm(drone_pos_3d - np.mean(np.array(self.setpoint_list)[16: , :], axis=0))
-                    if setpoint_distance < self.setpoint_criterion:
-                        self.counter += 1
-                    if self.counter > self.setpoint_count:
-                        auto_service.call_drone_command(4)
+                    setpoint, vh = self.cal_approch_setpoint(cross_pos_3d, other_pos_3d, drone_pos_3d, offset=self.offset, depth_mean=other_depth_mean)
+
+                    if np.isnan(setpoint[0]):
+                        rospy.loginfo("NaN Setpoint")
+                    else:
+                        self.setpoint_list.append(setpoint)
+                        self.log_matrices(cross_pos_3d, other_pos_3d, drone_pos_3d, setpoint, id=self.id)
+                        self.id += 1
+
+
+                    if len(self.setpoint_list) >= self.yolo_search_count:
+                        setpoint_distance = np.linalg.norm(drone_pos_3d - np.mean(np.array(self.setpoint_list)[self.yolo_search_count: , :], axis=0))
+                        cv2.putText(rgb_frame, f'setpoint distance : {setpoint_distance:.2f} : {self.counter}/{self.setpoint_count}', (0, 75), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(255, 128, 0), thickness=2)
+                        if setpoint_distance < self.setpoint_criterion:
+                            self.counter += 1
+                        if self.counter > self.setpoint_count:
+                            auto_service.call_drone_command(4)
                         
                     
                     cv2.putText(rgb_frame, f'inference time : {time.time() - start:.3f}', (0, 50), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(0, 0, 255), thickness=2)
                     cv2.rectangle(rgb_frame, (int(xyxy[0]), int(xyxy[1])), (int(xyxy[2]), int(xyxy[3])), color=(0, 255, 0), thickness=2)
                     cv2.putText(rgb_frame, f'{xyxy[4]:.3f}', (int(xyxy[0]), int(xyxy[1])), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(0, 255, 0), thickness=2)
-                    cv2.putText(rgb_frame, f'setpoint distance : {setpoint_distance:.2f} : {self.counter}/{self.setpoint_count}', (0, 75), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(255, 128, 0), thickness=2)
                     #rospy.loginfo(f"setpoint: {setpoint}")
                     #rospy.loginfo(f"get_2d: {self.get_2d_coord(setpoint)}")
                     try:

@@ -19,6 +19,7 @@ class RLControl:
         self.current_vel = TwistStamped()
         self.relative_dis = Float32MultiArray()
         self.landing_velocity = Twist()
+        self.mission = Float32()
 
         #Subscriber
         self.relative_dis_sub = rospy.Subscriber("/relative_distance", Float32MultiArray, self.relative_dis_cb)
@@ -83,7 +84,7 @@ class RLControl:
             #rospy.loginfo(f"action : {action}")
             self.landing_vel_pub.publish(self.landing_velocity)
 
-            if self.current_pose.pose.position.z < 0.1:
+            if self.current_pose.pose.position.z < 0.2:
                 auto_service.call_drone_command(11)
 
 

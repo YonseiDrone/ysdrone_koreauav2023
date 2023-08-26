@@ -107,7 +107,7 @@ class IslyPath(object):
                 self.isly_destination_pub.publish(self.isly_destination)
             else:
                 if self.mission == 5:
-                    auto_service.call_drone_command(9)
+                    auto_service.call_drone_command(6)
 
             if self.calc_xy_err(self.isly_destination, self.current_pose) < 0.3 and self.calc_z_err(self.isly_destination, self.current_pose) < 0.2:
                 self.destination_cnt += 1

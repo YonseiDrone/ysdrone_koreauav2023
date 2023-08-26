@@ -107,7 +107,6 @@ class KalmanFilter(object):
         # calculate the error covariance
         # P = A*P*A^T + Q
         self.P = np.dot(np.dot(self.A, self.P), self.A.T) + self.Q
-        rospy.loginfo(f"{self.x}")
         return self.x[0:2] # return x,y
     
     def update(self, z):
@@ -150,7 +149,7 @@ class ImageToDistance:
         self.filtered_xy_pub = rospy.Publisher("/filtered_xy", Point, queue_size=1)
 
         # Subscriber
-        self.image_sub = rospy.Subscriber('/stereo/left/image_raw', Image, self.image_to_distance_cb)
+        self.image_sub = rospy.Subscriber('/usb_camera/image_raw', Image, self.image_to_distance_cb)
         self.state_sub = rospy.Subscriber("/mavros/state", State, self.state_cb)
         self.pose_sub = rospy.Subscriber("/mavros/local_position/pose", PoseStamped, self.pose_cb)
         self.imu_sub = rospy.Subscriber("/mavros/imu/data", Imu, self.imu_cb)
@@ -224,14 +223,14 @@ class ImageToDistance:
             #rospy.loginfo(f"pixel x: {x_center_px}, y: {y_center_px}")
 
             center = [[x_center_px], [y_center_px]]
-            rospy.loginfo(f"pixel x: {x_center_px}, y: {y_center_px}")
+            #rospy.loginfo(f"pixel x: {x_center_px}, y: {y_center_px}")
             
             # Predict
             (x_predict, y_predict) = self.KF.predict()
             self.predicted_xy.x = x_predict[0]
             self.predicted_xy.y = y_predict[0]
             self.predicted_xy_pub.publish(self.predicted_xy)
-            rospy.loginfo(f"predict x: {x_predict}, y: {y_predict}")
+            #rospy.loginfo(f"predict x: {x_predict}, y: {y_predict}")
             cv2.rectangle(cv_image, (int(x_predict-30), int(y_predict-30)), (int(x_predict+30), int(y_predict+30)), (255,0,0), 2)
 
             # Update
@@ -255,7 +254,7 @@ class ImageToDistance:
             camera_coord *= tvec[2][0]
 
             camera_coord = np.array([camera_coord[0][0], camera_coord[1][0], camera_coord[2][0], 1])
-            rospy.loginfo(f"camera_coord: {camera_coord}")
+            #rospy.loginfo(f"camera_coord: {camera_coord}")
 
             x = -camera_coord[0]
             y = camera_coord[1]
@@ -268,12 +267,11 @@ class ImageToDistance:
             self.distance_pub.publish(dis)
 
         else:
-            self.lostnumber += 1
-            if self.lostnumber > 100:
-                dis = Float32MultiArray()
-                dis.data = (float('nan'), float('nan'))
-                self.distance_pub.publish(dis)
-        	# Node publish - cv_image
+            dis = Float32MultiArray()
+            dis.data = (float('nan'), float('nan'), float('nan'))
+            self.distance_pub.publish(dis)
+        
+        # Node publish - cv_image
         cv_image = cv2.cvtColor(cv_image, cv2.COLOR_BGR2RGB)
         self.image_pub.publish(self.bridge.cv2_to_imgmsg(cv_image, "rgb8"))
         cv_image = cv2.cvtColor(cv_image, cv2.COLOR_BGR2RGB)
