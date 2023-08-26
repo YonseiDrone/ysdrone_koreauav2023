@@ -267,6 +267,10 @@ class ControlClass(object):
             self.target_pose.pose.position.x = 0
             self.target_pose.pose.position.y = 0
             self.target_pose.pose.position.z = 4
+            self.target_pose.pose.orientation.x = self.current_pose.pose.orientation.x
+            self.target_pose.pose.orientation.y = self.current_pose.pose.orientation.y
+            self.target_pose.pose.orientation.z = self.current_pose.pose.orientation.z
+            self.target_pose.pose.orientation.w = self.current_pose.pose.orientation.w
             self.target_pose_pub.publish(self.target_pose)
 
             if abs(self.target_pose.pose.position.z - self.current_pose.pose.position.z) < 0.1:

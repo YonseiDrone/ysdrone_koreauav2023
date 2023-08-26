@@ -87,7 +87,7 @@ class IslyPath(object):
         return z_err
 
     def destination_publisher(self, e):
-        if self.init_destination_check:
+        if self.init_destination_check and self.mission == 5:
             self.isly_destination.header.stamp = rospy.get_rostime()
 
             #=====================================LOCAL COORDINATE=======================================================

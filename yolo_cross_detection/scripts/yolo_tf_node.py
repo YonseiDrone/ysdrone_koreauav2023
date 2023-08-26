@@ -107,7 +107,7 @@ class MarkerDetection(object):
 
     def log_matrices(self, cross_pos_3d, other_pos_3d, drone_pos_3d, setpoint, id=0):
         if id % 1 == 0:
-            d = f'~/logs/'
+            d = f'/home/khadas/logs/'
             np.save(d + f'cross_pos_3d_{id}.npy', cross_pos_3d)
             np.save(d + f'other_pos_3d_{id}.npy', other_pos_3d)
             np.save(d + f'drone_pos_3d_{id}.npy', drone_pos_3d)
@@ -118,7 +118,7 @@ class MarkerDetection(object):
         self.centroid = np.array([x,y,z])
         marker = self.make_cube_marker(self.centroid, (0, 255, 0), 0.6)
         self.centroid_pub.publish(marker)
-        rospy.loginfo(f"building centroid: {self.centroid}")
+        #rospy.loginfo(f"building centroid: {self.centroid}")
 
     def visualize(self):
         self.setpoint_list = np.array(self.setpoint_list)
@@ -163,6 +163,10 @@ class MarkerDetection(object):
 
         pixels = np.array(pixels).astype(np.int32)
         distances = depth_frame[pixels[:, 1], pixels[:, 0]]
+
+        # Remove NaN values from numpy array 
+        depth_mean = np.mean(distances[~np.isnan(distances)])
+
         #=====================Pixel to Camera======================================================================
         camera_coords = np.ones((4, len(distances)))
         camera_coords[2, :] = distances*0.001
@@ -192,7 +196,7 @@ class MarkerDetection(object):
         enu_coords[2, :] += self.current_pose.pose.position.z
         enu_coords = enu_coords.T
     
-        return enu_coords[:,0:3]
+        return enu_coords[:,0:3], depth_mean
     
     
     def get_2d_coord(self, position):
@@ -254,13 +258,13 @@ class MarkerDetection(object):
 
         return result
     
-    def cal_approch_setpoint(self, cross_pos, other_pos, drone_pos, offset):
-        n = len(other_pos)
+    def cal_approch_setpoint(self, cross_pos, other_pos, drone_pos, offset, depth_mean):
         points = np.array(other_pos)
 
         mean_point = np.mean(points, axis=0)
         centered_points = points - mean_point
-        # SVD(Singular Value Decomposition)
+
+        # ============SVD(Singular Value Decomposition)=========
         _, _, vh = svd(centered_points)
         normal_vector = vh[-1]
         normal_vector[2] = 0
@@ -269,9 +273,22 @@ class MarkerDetection(object):
 
         if np.dot(normal_vector, cross_drone_vec) > 0:
             normal_vector = -normal_vector
+        #========================================================
+
+        #========================PCA======================
+        # cov_matrix = np.cov(centered_points, rowvar=False)
+        # eigenvalues, eigenvectors = np.linalg.eigh(cov_matrix)
+        # normal_vector = eigenvectors[:, np.argmin(eigenvalues)]
+        # normal_vector[2] = 0
+
+        # cross_drone_vec = cross_pos - drone_pos
+
+        # if np.dot(normal_vector, cross_drone_vec) > 0:
+        #     normal_vector = -normal_vector
+        #================================================
 
         # drone setpoint
-        return cross_pos + normal_vector / np.linalg.norm(normal_vector) * offset
+        return cross_pos + normal_vector / np.linalg.norm(normal_vector) * (offset + (offset - depth_mean)*0.3)
 
     def make_cube_marker(self, pos, color, scale):
         #visualize
@@ -444,9 +461,10 @@ class MarkerDetection(object):
                     #cross makrer sampling in pixel coord
                     other_pos = self.square_sampling((int(xyxy[0]), int(xyxy[1])), (int(xyxy[2]), int(xyxy[3])))
                     #tf to 3d
-                    cross_pos_3d = self.get_3d_coord_fast([cross_pos], depth_frame)[0]
+                    cross_pos_3d, _ = self.get_3d_coord_fast([cross_pos], depth_frame)
+                    cross_pos_3d = list(cross_pos_3d)[0]
                     self.crosspos_list.append(cross_pos_3d)
-                    other_pos_3d = self.get_3d_coord_fast(other_pos, depth_frame)
+                    other_pos_3d, other_depth_mean = self.get_3d_coord_fast(other_pos, depth_frame)
 
                     # drone position in 3D
                     drone_pos_3d = np.array([self.current_pose.pose.position.x, self.current_pose.pose.position.y, self.current_pose.pose.position.z])
@@ -454,7 +472,7 @@ class MarkerDetection(object):
 
 
                     #setpoint 계산
-                    setpoint = self.cal_approch_setpoint(cross_pos_3d, other_pos_3d, drone_pos_3d, offset=self.offset)
+                    setpoint = self.cal_approch_setpoint(cross_pos_3d, other_pos_3d, drone_pos_3d, offset=self.offset, depth_mean=other_depth_mean)
                     if np.isnan(setpoint[0]):
                         rospy.loginfo("NaN Setpoint")
                     else:
