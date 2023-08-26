@@ -52,19 +52,20 @@ class MarkerDetection(object):
         self.crosspos_list = []
         self.dronepos_list = []
         self.counter = 0
+        self.id = 0
         self.intrinsic_matrix = np.array([[385.7627868652344, 0.0, 331.9479064941406],
                         [0.0, 385.4613342285156, 237.6436767578125],
                         [0.0, 0.0, 1.0]])
 
         #setpoint
-        self.offset = rospy.get_param("yolo_offset") # Distance from the cross marker
-        self.circular_speed = rospy.get_param("circular_speed")
-        self.radius = rospy.get_param("radius")
-        self.yolo_search_count = rospy.get_param("yolo_search_count")
-        self.yolo_stack_count = rospy.get_param("yolo_stack_count")
-        self.setpoint_criterion = rospy.get_param("setpoint_criterion")
-        self.setpoint_count = rospy.get_param("setpoint_count")
-        self.obstacle_bound = rospy.get_param("obstacle_bound")
+        self.offset = rospy.get_param("yolo_offset", 5) # Distance from the cross marker
+        self.circular_speed = rospy.get_param("circular_speed", 0.1)
+        self.radius = rospy.get_param("radius", 6)
+        self.yolo_search_count = rospy.get_param("yolo_search_count", 7)
+        self.yolo_stack_count = rospy.get_param("yolo_stack_count", 15)
+        self.setpoint_criterion = rospy.get_param("setpoint_criterion", 0.3)
+        self.setpoint_count = rospy.get_param("setpoint_count",10)
+        self.obstacle_bound = rospy.get_param("obstacle_bound",2)
 
         self.current_state = State()
         self.current_pose = PoseStamped()
@@ -104,11 +105,20 @@ class MarkerDetection(object):
 
         rospy.on_shutdown(self.visualize)
 
+    def log_matrices(self, cross_pos_3d, other_pos_3d, drone_pos_3d, setpoint, id=0):
+        if id % 1 == 0:
+            d = f'~/logs/'
+            np.save(d + f'cross_pos_3d_{id}.npy', cross_pos_3d)
+            np.save(d + f'other_pos_3d_{id}.npy', other_pos_3d)
+            np.save(d + f'drone_pos_3d_{id}.npy', drone_pos_3d)
+            np.save(d + f'setpoint_{id}.npy', setpoint)
+
     def centroid_cb(self, msg):
         x, y, z = msg.pose.position.x, msg.pose.position.y, msg.pose.position.z
         self.centroid = np.array([x,y,z])
         marker = self.make_cube_marker(self.centroid, (0, 255, 0), 0.6)
         self.centroid_pub.publish(marker)
+        rospy.loginfo(f"building centroid: {self.centroid}")
 
     def visualize(self):
         self.setpoint_list = np.array(self.setpoint_list)
@@ -153,7 +163,6 @@ class MarkerDetection(object):
 
         pixels = np.array(pixels).astype(np.int32)
         distances = depth_frame[pixels[:, 1], pixels[:, 0]]
-        rospy.loginfo(f"distance(200,200): {depth_frame[200, 200]}")
         #=====================Pixel to Camera======================================================================
         camera_coords = np.ones((4, len(distances)))
         camera_coords[2, :] = distances*0.001
@@ -308,7 +317,7 @@ class MarkerDetection(object):
         e_x, e_y = gx-x, gy-y
         distance = np.linalg.norm([e_x, e_y])
 
-        self.Kp_att = distance * 0.15
+        self.Kp_att = distance * 0.1
         att_x = self.Kp_att * e_x/distance
         att_y = self.Kp_att * e_y/distance
 
@@ -344,6 +353,7 @@ class MarkerDetection(object):
                 obstacle = np.array([[self.centroid[0], self.centroid[1], self.centroid[2]]])
 
                 if len(self.crosspos_list) < self.yolo_search_count:
+                    rospy.loginfo(f"count: {len(self.crosspos_list)}")
                     error_yaw = math.atan2(self.centroid[1] - self.current_pose.pose.position.y, self.centroid[0] - self.current_pose.pose.position.x)
                     current_angle = error_yaw + math.pi
                     qz = math.sin(error_yaw/2.0)
@@ -362,6 +372,7 @@ class MarkerDetection(object):
                     self.target_pose_pub.publish(self.target_pose)
                 
                 elif self.yolo_search_count<=len(self.crosspos_list)<=self.yolo_search_count+self.yolo_stack_count:
+                    rospy.loginfo(f"count: {len(self.crosspos_list)}")
                     error_yaw = math.atan2(self.centroid[1] - self.current_pose.pose.position.y, self.centroid[0] - self.current_pose.pose.position.x)
                     current_angle = error_yaw + math.pi
                     qz = math.sin(error_yaw/2.0)
@@ -378,7 +389,9 @@ class MarkerDetection(object):
                 else:
                     #==================TODO=====================
                     #Outlier delete
+                    rospy.loginfo(f"count: {len(self.crosspos_list)}")
                     setpoint = np.mean(np.array(self.setpoint_list)[7: , :], axis=0)
+                    rospy.loginfo(f"setpoint: {setpoint}")
                     marker = self.make_cube_marker(setpoint, (0.0, 0.0, 1.0), 0.4)
                     self.approch_pub.publish(marker)
 
@@ -403,6 +416,7 @@ class MarkerDetection(object):
                     self.target_pose.pose.position.z = setpoint[2]
 
                     cross_pos_3d = np.mean(np.array(self.crosspos_list), axis=0)
+                    rospy.loginfo(f"cross_pos_3d: {cross_pos_3d}")
                     marker = self.make_cube_marker(cross_pos_3d, (0.0, 0.0, 1.0), 0.4)
                     self.cross_marker_pub.publish(marker)
                     # rospy.loginfo(f"Mean cross marker: {cross_pos_3d}")
@@ -441,18 +455,24 @@ class MarkerDetection(object):
 
                     #setpoint 계산
                     setpoint = self.cal_approch_setpoint(cross_pos_3d, other_pos_3d, drone_pos_3d, offset=self.offset)
-                    self.setpoint_list.append(setpoint)
-                    setpoint_distance = np.linalg.norm(drone_pos_3d - setpoint)
-                    if setpoint_distance < self.setpoint_criterion:
-                        self.counter += 1
-                    if self.counter > self.setpoint_count:
-                        auto_service.call_drone_command(4)                 
+                    if np.isnan(setpoint[0]):
+                        rospy.loginfo("NaN Setpoint")
+                    else:
+                        self.setpoint_list.append(setpoint)
+                        self.log_matrices(cross_pos_3d, other_pos_3d, drone_pos_3d, setpoint, id=self.id)
+                        self.id += 1
+
+                    if len(self.setpoint_list) >= self.yolo_search_count:
+                        setpoint_distance = np.linalg.norm(drone_pos_3d - np.mean(np.array(self.setpoint_list)[self.yolo_search_count: , :], axis=0))
+                        cv2.putText(rgb_frame, f'setpoint distance : {setpoint_distance:.2f} : {self.counter}/{self.setpoint_count}', (0, 75), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(255, 128, 0), thickness=2)
+                        if setpoint_distance < self.setpoint_criterion:
+                            self.counter += 1
+                        if self.counter > self.setpoint_count:
+                            auto_service.call_drone_command(4)                 
 
                     cv2.putText(rgb_frame, f'inference time : {time.time() - start:.3f}', (0, 50), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(0, 0, 255), thickness=2)
                     cv2.rectangle(rgb_frame, (int(xyxy[0]), int(xyxy[1])), (int(xyxy[2]), int(xyxy[3])), color=(0, 255, 0), thickness=2)
-                    cv2.circle(rgb_frame, (200, 200), color=(0,255,0), thickness=1)
                     cv2.putText(rgb_frame, f'{xyxy[4]:.3f}', (int(xyxy[0]), int(xyxy[1])), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(0, 255, 0), thickness=2)
-                    cv2.putText(rgb_frame, f'setpoint distance : {setpoint_distance:.2f} : {self.counter}/{self.setpoint_count}', (0, 75), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(255, 128, 0), thickness=2)
                     try:
                         cv2.line(rgb_frame, (int(cross_pos[0]), int(cross_pos[1])), self.get_2d_coord(setpoint), (255, 0, 0), thickness=3)
                     except:

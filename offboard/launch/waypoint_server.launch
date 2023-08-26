@@ -1,5 +1,5 @@
 <launch>
-	<param name="/srv_mode" value="true" />
+	<param name="/srv_mode" value="false" />
 	<param name="/destination_z" value="7.0" />
 
 	<!-- GPS to ENU-->

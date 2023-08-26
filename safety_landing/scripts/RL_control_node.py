@@ -19,6 +19,7 @@ class RLControl:
         self.current_vel = TwistStamped()
         self.relative_dis = Float32MultiArray()
         self.landing_velocity = Twist()
+        self.mission = Float32()
 
         #Subscriber
         self.relative_dis_sub = rospy.Subscriber("/relative_distance", Float32MultiArray, self.relative_dis_cb)

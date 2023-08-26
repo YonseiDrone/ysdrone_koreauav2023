@@ -12,6 +12,7 @@ class SetmodeClass(object):
         self.current_pose = PoseStamped()
         self.target_pose = PoseStamped()
         self.service_timeout = 30
+        self.mission = Float32()
 
         #Subscriber
         self.state_sub = rospy.Subscriber("/mavros/state", State, self.state_cb)
@@ -42,7 +43,8 @@ class SetmodeClass(object):
             rospy.loginfo(f"Vehicle armed : {self.current_state.armed}")
             
     def mission_cb(self, msg):
-        if msg.data == 11:
+        self.mission = msg.data
+        if self.mission == 11:
             rospy.loginfo(f"Disarming activated")
             self.land()
 

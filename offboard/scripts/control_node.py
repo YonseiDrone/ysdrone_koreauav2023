@@ -266,7 +266,7 @@ class ControlClass(object):
         if self.cmd_state == 0:
             self.target_pose.pose.position.x = 0
             self.target_pose.pose.position.y = 0
-            self.target_pose.pose.position.z = 7.2
+            self.target_pose.pose.position.z = 4
             self.target_pose_pub.publish(self.target_pose)
 
             if abs(self.target_pose.pose.position.z - self.current_pose.pose.position.z) < 0.1:
