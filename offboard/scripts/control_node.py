@@ -1,8 +1,9 @@
 #! /usr/bin/env python3
+import numpy as np
 import rospy
 import math
 import tf
-from std_msgs.msg import Float32, String
+from std_msgs.msg import Float32, String, Float32MultiArray
 from geometry_msgs.msg import PoseStamped, Twist
 from visualization_msgs.msg import MarkerArray, Marker
 from mavros_msgs.msg import State, PositionTarget
@@ -89,6 +90,7 @@ class ControlClass(object):
         self.isly_destination_command_marker = Marker()
         self.isly_destination_command_marker_array = MarkerArray()
         self.desired_landing = PositionTarget()
+        self.desired_landing_position = PoseStamped()
         self.mission_num = Float32()
         self.mission_rep = String()
         self.RL_target_vel = Twist()
@@ -105,6 +107,7 @@ class ControlClass(object):
         self.move_marker_array = MarkerArray()
         self.resp = DroneCommandResponse()
         self.resp.mode = 'Takeoff Mode'
+        self.relative_dis = Float32MultiArray()
     
         #Subscriber
         self.state_sub = rospy.Subscriber('/mavros/state', State, self.state_cb)
@@ -112,6 +115,8 @@ class ControlClass(object):
         self.destination_command_sub = rospy.Subscriber('/destination_command', PoseStamped, self.destination_command_cb)
         self.isly_destination_command_sub = rospy.Subscriber('/isly_destination_command', PoseStamped, self.isly_destination_command_cb)
         self.desired_landing_sub = rospy.Subscriber('/desired_landing', PositionTarget, self.desired_landing_cb)
+        self.desired_landing_position_sub = rospy.Subscriber('/desired_landing_position', PoseStamped, self.desired_landing_position_cb)
+        self.relative_dis_sub = rospy.Subscriber("/relative_distance", Float32MultiArray, self.relative_dis_cb)
         self.RL_target_vel_sub = rospy.Subscriber('/landing_velocity', Twist, self.RL_target_vel_cb)
         self.launch_setposition_sub = rospy.Subscriber('/launch_setposition', PoseStamped, self.launch_setposition_cb)
         self.avoidance_pos_sub = rospy.Subscriber('/avoidance/setpoint_position/local', PoseStamped, self.avoidance_pos_cb)
@@ -138,7 +143,7 @@ class ControlClass(object):
         elif self.cmd_state == 4 and self.move.pose.position.z != 0:
             self.avoidance = self.move
 
-        if self.cmd_state not in [9, 11]:
+        if self.cmd_state not in [6, 9, 11]:
             self.target_pose_pub.publish(self.avoidance)
     #====================================================
 
@@ -189,6 +194,12 @@ class ControlClass(object):
         self.desired_landing.yaw = msg.yaw
         self.desired_landing.yaw_rate = 1
 
+    def desired_landing_position_cb(self, msg):
+        self.desired_landing_position = msg
+
+    def relative_dis_cb(self, msg):
+        self.relative_dis = msg
+
     def destination_command_cb(self, msg):
         self.destination_command_marker.pose.position.x = msg.pose.position.x
         self.destination_command_marker.pose.position.y = msg.pose.position.y
@@ -235,7 +246,7 @@ class ControlClass(object):
             self.resp.mode = 'Of course I Still Love You'
             self.resp.res = True
         elif self.cmd_state == 6:
-            self.resp.mode = 'Safety Landing Mode'
+            self.resp.mode = 'Precision Landing Mode'
             self.resp.res = True
         elif self.cmd_state == 7:
             self.resp.mode = 'Position Control Mode'
@@ -310,9 +321,12 @@ class ControlClass(object):
 
         # Mission 6(Safety Landing)
         if self.cmd_state == 6:
-            self.desired_landing_pub.publish(self.desired_landing)
-            rospy.loginfo(f"Velocity - x: {self.desired_landing.velocity.x}, y: {self.desired_landing.velocity.y}, z : {self.desired_landing.velocity.z}")
-        
+            if np.isnan(self.relative_dis.data[0]):
+                self.target_pose_pub.publish(self.desired_landing_position)
+
+            else:
+                self.desired_landing_pub.publish(self.desired_landing)
+           
         
         # Mission 7(Position Control)
         if self.cmd_state == 7:

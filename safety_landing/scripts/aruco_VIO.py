@@ -131,7 +131,6 @@ class KalmanFilter(object):
 class ImageToDistance:
 
     def __init__(self):
-        self.lostnumber = 0
         self.current_state = State()
         self.current_pose = PoseStamped()
         self.bridge = CvBridge()
@@ -157,6 +156,7 @@ class ImageToDistance:
         # Camera intrinsic matrix [[f_x, 0, c_x], [0, f_y, c_y], [0, 0, 1]]
         self.cameraMatrix = np.array([[653.054314, 0. , 640.0], [ 0.0 , 653.054314, 360.0], [0.0 , 0.0 , 1.0]])
         self.distortion = np.array([[-0.250806, 0.065280, 0.001852, -0.000407]])
+        self.marker_size = 0.325
         
         # aruco basic setting
         self.aruco_dict = aruco.getPredefinedDictionary(aruco.DICT_6X6_50)
@@ -182,8 +182,7 @@ class ImageToDistance:
         ret, cv_image = self.cap.read()
         height, width, _ = cv_image.shape
 
-        marker_size = 0.325
-        objp = np.array([[0, 0, 0], [0, marker_size, 0], [marker_size, marker_size, 0], [marker_size, 0, 0]], dtype=np.float32)
+        objp = np.array([[0, 0, 0], [0, self.marker_size, 0], [self.marker_size, self.marker_size, 0], [self.marker_size, 0, 0]], dtype=np.float32)
 
         # hese parameters include things like marker detection thresholds, corner refinement methods, and adaptive thresholding parameters
         # we should change these parameters so that can achieve the desired level of marker detection accuracy and robustness
@@ -196,7 +195,6 @@ class ImageToDistance:
         corners, ids, rejectedImgPoints = self.detector.detectMarkers(cv_image_gray)
 
         if np.all(ids != None):
-            self.lostnumber = 0
             id = ids[0][0]
             lock_number = 0
             for i in range(ids.size):
@@ -225,14 +223,14 @@ class ImageToDistance:
             #rospy.loginfo(f"pixel x: {x_center_px}, y: {y_center_px}")
 
             center = [[x_center_px], [y_center_px]]
-            rospy.loginfo(f"pixel x: {x_center_px}, y: {y_center_px}")
+            #rospy.loginfo(f"pixel x: {x_center_px}, y: {y_center_px}")
             
             # Predict
             (x_predict, y_predict) = self.KF.predict()
             self.predicted_xy.x = x_predict[0]
             self.predicted_xy.y = y_predict[0]
             self.predicted_xy_pub.publish(self.predicted_xy)
-            rospy.loginfo(f"predict x: {x_predict}, y: {y_predict}")
+            #rospy.loginfo(f"predict x: {x_predict}, y: {y_predict}")
             cv2.rectangle(cv_image, (int(x_predict-30), int(y_predict-30)), (int(x_predict+30), int(y_predict+30)), (255,0,0), 2)
 
             # Update
@@ -256,7 +254,7 @@ class ImageToDistance:
             camera_coord *= tvec[2][0]
 
             camera_coord = np.array([camera_coord[0][0], camera_coord[1][0], camera_coord[2][0], 1])
-            rospy.loginfo(f"camera_coord: {camera_coord}")
+            #rospy.loginfo(f"camera_coord: {camera_coord}")
 
             x = -camera_coord[0]
             y = camera_coord[1]
@@ -269,12 +267,11 @@ class ImageToDistance:
             self.distance_pub.publish(dis)
 
         else:
-            self.lostnumber += 1
-            if self.lostnumber > 100:
-                dis = Float32MultiArray()
-                dis.data = (float('nan'), float('nan'))
-                self.distance_pub.publish(dis)
-        	# Node publish - cv_image
+            dis = Float32MultiArray()
+            dis.data = (float('nan'), float('nan'), float('nan'))
+            self.distance_pub.publish(dis)
+
+        # Node publish - cv_image
         cv_image = cv2.cvtColor(cv_image, cv2.COLOR_BGR2RGB)
         self.image_pub.publish(self.bridge.cv2_to_imgmsg(cv_image, "rgb8"))
         cv_image = cv2.cvtColor(cv_image, cv2.COLOR_BGR2RGB)

@@ -2,12 +2,29 @@
 import rospy
 import tf
 import math
+import numpy as np
 from geometry_msgs.msg import Twist
 from geometry_msgs.msg import PoseStamped
 from mavros_msgs.msg import State, PositionTarget
 from mavros_msgs.srv import CommandBool, SetMode, CommandTOL
 from math import pow, atan2, sqrt, pi, degrees
 from std_msgs.msg import Float32MultiArray
+
+
+def to_quaternion(yaw, pitch, roll):
+    cy = math.cos(yaw * 0.5)
+    sy = math.sin(yaw * 0.5)
+    cp = math.cos(pitch * 0.5)
+    sp = math.sin(pitch * 0.5)
+    cr = math.cos(roll * 0.5)
+    sr = math.sin(roll * 0.5)
+
+    qx = sr*cp*cy - cr*sp*sy
+    qy = cr*sp*cy + sr*cp*sy
+    qz = cr*cp*sy - sr*sp*cy
+    qw = cr*cp*cy + sr*sp*sy
+
+    return qx, qy, qz, qw
 
 class PID:
     def __init__(self, kp=1, kd=0, ki=0, dt=0.01):
@@ -46,6 +63,7 @@ class PIDControl:
         self.relative_dis = Float32MultiArray()
         self.landing_velocity = Twist()
         self.tolerance_position = 0.01
+        self.desired_landing_position = PoseStamped()
         self.desired_landing = PositionTarget()
 
         #Subscriber
@@ -55,6 +73,7 @@ class PIDControl:
 
         #Publisher
         # Send the desired velocity of UAV to control_node in offboard package.
+        self.desired_landing_position_pub = rospy.Publisher('/desired_landing_position', PoseStamped, queue_size=1)
         self.desired_landing_pub = rospy.Publisher('/desired_landing', PositionTarget, queue_size=1)
         
         # controller frequency in Hz
@@ -90,34 +109,34 @@ class PIDControl:
      
 
     def safety_landing(self, e):
-        try:
+        if np.isnan(self.relative_dis.data[0]):
+            qx, qy, qz, qw = to_quaternion(self.yaw, 0, 0)
+            self.desired_landing_position.pose.position.x = 0
+            self.desired_landing_position.pose.position.y = 0
+            self.desired_landing_position.pose.position.z = self.current_pose.pose.position.z - 0.5
+            self.desired_landing_position.pose.orientation.x = qx
+            self.desired_landing_position.pose.orientation.y = qy
+            self.desired_landing_position.pose.orientation.z = qz
+            self.desired_landing_position.pose.orientation.w = qw
+            self.desired_landing_position_pub.publish(self.desired_landing_position)
+        else:
+            #rospy.loginfo("HERE")
             err_x = self.relative_dis.data[0] - 0
             err_y = self.relative_dis.data[1] - 0
             err_z = self.relative_dis.data[2] - 0
             err = self.calc_distance(err_x, err_y, err_z)
-        except IndexError:
+
+            #Compute PID
+            vx = self.pid_x.compute(err_x)
+            vy = self.pid_y.compute(err_y)
+
             self.desired_landing.yaw = self.yaw
-            self.desired_landing.velocity.x = 0
-            self.desired_landing.velocity.y = 0
+            self.desired_landing.velocity.x = -vx*0.3
+            self.desired_landing.velocity.y = -vy*0.3
             self.desired_landing.velocity.z = -0.3
+
             self.desired_landing_pub.publish(self.desired_landing)
-            rospy.loginfo("Warning: self.relative_dis.data has less than 3 elements. Skipping this cycle")
-            return
 
-        #Compute PID
-        vx = self.pid_x.compute(err_x)
-        vy = self.pid_y.compute(err_y)
-
-        self.desired_landing.yaw = self.yaw
-        self.desired_landing.velocity.x = -vx*0.3
-        self.desired_landing.velocity.y = -vy*0.3
-        self.desired_landing.velocity.z = -0.3
-
-        self.desired_landing_pub.publish(self.desired_landing)
-
-        #Debugging
-        #rospy.loginfo(f"err_x: {err_x}, vx: {vx} || err_y: {err_y}, vy: {vy} || err_z: {err_z}, vz: {vz}")
-        self.rate.sleep()
 
 
 if __name__ == "__main__":
