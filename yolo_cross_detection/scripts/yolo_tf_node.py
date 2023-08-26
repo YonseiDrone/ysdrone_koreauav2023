@@ -96,6 +96,7 @@ class MarkerDetection(object):
         self.centroid_pub = rospy.Publisher('/building_centroid', Marker, queue_size=1)
         self.obstacle_bound_pub = rospy.Publisher('/obstacle_bound', Marker, queue_size=1)
         self.cross_marker_pub = rospy.Publisher('/cross_marker_position', Marker, queue_size=1)
+        self.setpoint_pub = rospy.Publisher('/setpoint', Marker, queue_size=1)
         self.target_pose_pub = rospy.Publisher('/launch_setposition', PoseStamped, queue_size=1)
 
         # Parameter for Potential Field
@@ -274,15 +275,15 @@ class MarkerDetection(object):
         mean_point = np.mean(points, axis=0)
         centered_points = points - mean_point
         # # =====SVD(Singular Value Decomposition)======
-        _, _, vh = svd(centered_points[:, :2])
-        normal_vector = vh[-1]
-        rospy.loginfo(f"normal vector: {normal_vector}")
-        normal_vector = np.array([normal_vector[0], normal_vector[1], 0])
+        # _, _, vh = svd(centered_points[:, :2])
+        # normal_vector = vh[-1]
+        # rospy.loginfo(f"normal vector: {normal_vector}")
+        # normal_vector = np.array([normal_vector[0], normal_vector[1], 0])
         #========================PCA======================
-        # cov_matrix = np.cov(centered_points, rowvar=False)
-        # eigenvalues, eigenvectors = np.linalg.eigh(cov_matrix)
-        # normal_vector = eigenvectors[:, np.argmin(eigenvalues)]
-        # normal_vector[2] = 0
+        cov_matrix = np.cov(centered_points[:, :2], rowvar=False)
+        eigenvalues, eigenvectors = np.linalg.eigh(cov_matrix)
+        normal_vector = eigenvectors[:, np.argmin(eigenvalues)]
+        normal_vector = np.array([normal_vector[0], normal_vector[1], 0])
         #================================================
 
         #========================LSTSQ======================
@@ -298,7 +299,7 @@ class MarkerDetection(object):
 
         # drone setpoint
         # return cross_pos + normal_vector / np.linalg.norm(normal_vector) * (offset + (offset - depth_mean)*0.3), vh
-        return cross_pos + normal_vector / np.linalg.norm(normal_vector) * offset, vh
+        return cross_pos + normal_vector / np.linalg.norm(normal_vector) * offset
 
     def make_cube_marker(self, pos, color, scale):
         #visualize
@@ -476,7 +477,8 @@ class MarkerDetection(object):
                     self.dronepos_list.append(drone_pos_3d)
 
                     #setpoint 계산
-                    setpoint, vh = self.cal_approch_setpoint(cross_pos_3d, other_pos_3d, drone_pos_3d, offset=self.offset, depth_mean=other_depth_mean)
+                    setpoint = self.cal_approch_setpoint(cross_pos_3d, other_pos_3d, drone_pos_3d, offset=self.offset, depth_mean=other_depth_mean)
+                    self.setpoint_pub.publish(self.make_cube_marker(setpoint, (0.5, 0, 0.5), 0.4))
 
                     if np.isnan(setpoint[0]):
                         rospy.loginfo("NaN Setpoint")
