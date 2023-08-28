@@ -65,9 +65,10 @@ class CargoLaunch(object):
 
 		self.move_pub = rospy.Publisher('/move_to_launch', PoseStamped, queue_size=1)
 
-		self.servo1 = False
-		self.servo2 = False
-		self.start = time.time()
+		self.servo_block = False
+		self.servo_launch = False
+		self.t_pwm = time.time()
+		self.DEBUG = True
 
 	def launch_setposition_cb(self, msg):
 		self.launch_setposition = msg
@@ -106,18 +107,11 @@ class CargoLaunch(object):
 			self.move_pub.publish(self.move)
 
 			if self.calc_xy_err(self.move, self.current_pose)<0.1 and self.calc_z_err(self.move, self.current_pose)<0.1:
-				if not self.servo1:
-					self.start = time.time()
-					self.servo1 = self.MAV_CMD_DO_SET_ACTUATOR_1()
-				elif not self.servo2 and time.time() - self.start < 4:
-					pass
-				elif not self.servo2:
-					self.start = time.time()
-					self.servo2 = self.MAV_CMD_DO_SET_ACTUATOR_2()
-				elif time.time() - self.start < 4:
-					pass
-				else:
-					auto_service.call_drone_command(5)
+				self.CARGO_MISSION()
+    
+		if(self.DEBUG):
+			self.CARGO_MISSION()
+       
 
 	def MAV_CMD_DO_SET_ACTUATOR_1(self):
 		# rospy.loginfo('Waiting for server...')
@@ -126,7 +120,7 @@ class CargoLaunch(object):
 			servo_control_srv = rospy.ServiceProxy('/mavros/cmd/command', CommandLong)
 	
 			msg = CommandLong()
-			resp = servo_control_srv(broadcast=False, command=187, confirmation=False, param1=1, param2=0, param3=0, param4=0, param5=1, param6=1, param7=0)
+			resp = servo_control_srv(broadcast=False, command=187, confirmation=False, param1=1, param2=0, param3=0, param4=0, param5=0, param6=0, param7=0)
 	
 			# rospy.loginfo('Try service call...')
 			if resp.success:
@@ -147,7 +141,7 @@ class CargoLaunch(object):
 			servo_control_srv = rospy.ServiceProxy('/mavros/cmd/command', CommandLong)
 	
 			msg = CommandLong()
-			resp = servo_control_srv(broadcast=False, command=187, confirmation=False, param1=1, param2=0, param3=0, param4=0, param5=1, param6=1, param7=0)
+			resp = servo_control_srv(broadcast=False, command=187, confirmation=False, param1=0, param2=1, param3=0, param4=0, param5=0, param6=0, param7=0)
 	
 			# rospy.loginfo('Try service call...')
 			if resp.success:
@@ -160,7 +154,23 @@ class CargoLaunch(object):
 		except rospy.ServiceException as e:
 			print("Service call failed: %s" % e)
 			return False
-	
+
+	def CARGO_MISSION(self):
+		if not self.servo_block:
+			self.t_pwm = time.time()
+			self.servo_block = self.MAV_CMD_DO_SET_ACTUATOR_1()
+		elif self.servo_block:
+			if not self.servo_launch and time.time() - self.t_pwm < 4:
+				pass
+			elif not self.servo_launch:
+				self.t_pwm = time.time()
+				self.servo_launch = self.MAV_CMD_DO_SET_ACTUATOR_2()
+			elif time.time() - self.t_pwm < 4:
+				pass
+			else:
+				auto_service.call_drone_command(5)
+		else:
+			rospy.logwarn("Servo Error")	
 
 		
 
