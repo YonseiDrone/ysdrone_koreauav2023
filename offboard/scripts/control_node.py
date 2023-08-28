@@ -321,11 +321,14 @@ class ControlClass(object):
 
         # Mission 6(Safety Landing)
         if self.cmd_state == 6:
-            if np.isnan(self.relative_dis.data[0]):
-                self.target_pose_pub.publish(self.desired_landing_position)
+            try:
+                if np.isnan(self.relative_dis.data[0]):
+                    self.target_pose_pub.publish(self.desired_landing_position)
 
-            else:
-                self.desired_landing_pub.publish(self.desired_landing)
+                else:
+                    self.desired_landing_pub.publish(self.desired_landing)
+            except IndexError:
+                self.target_pose_pub.publish(self.current_pose)
            
         
         # Mission 7(Position Control)

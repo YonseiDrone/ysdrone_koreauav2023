@@ -10,7 +10,7 @@
 		<param name="building_search_count" value="15"/>
 		<param name="building_stack_count" value="15"/>
 	<node pkg="yolo_cross_detection" type="yolo_tf_node.py" name="yolo_tf_node" output="screen" />
-		<param name="yolo_offset" value="6.0"/>
+		<param name="yolo_offset" value="4.0"/>
 		<param name="circular_speed" value="0.1"/>
 		<param name="radius" value="8.0"/>
 		<param name="yolo_search_count" value="7"/>
@@ -18,9 +18,9 @@
 		<param name="setpoint_criterion" value="1"/>
 		<param name="setpoint_count" value="2"/>
 		<param name="obstacle_bound" value="2.5"/>
-	<!-- <node pkg="safety_landing" type="aruco_VIO.py" name="aruco_VIO" output="screen" />  -->
+	<node pkg="safety_landing" type="aruco_VIO.py" name="aruco_VIO" output="screen" />
 
-	<!-- <node pkg="safety_landing" type="PID_control_node.py" name="PID_control_node" output="screen" />  -->
+	<node pkg="safety_landing" type="PID_control_node.py" name="PID_control_node" output="screen" />
 
 	<node pkg="safety_landing" type="RL_control_node.py" name="RL_control_node" output="screen"/>
 	<node pkg="koreauav_utils" type="cargo_launch.py" name="cargo_launch" output="screen"/>

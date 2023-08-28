@@ -100,7 +100,7 @@ class MarkerDetection(object):
 
         # Parameter for Potential Field
         self.Kp_att = 0.1
-        self.Kp_rel = 100.0
+        self.Kp_rel = 200.0
 
 
         rospy.on_shutdown(self.visualize)
@@ -260,35 +260,26 @@ class MarkerDetection(object):
     
     def cal_approch_setpoint(self, cross_pos, other_pos, drone_pos, offset, depth_mean):
         points = np.array(other_pos)
-
         mean_point = np.mean(points, axis=0)
         centered_points = points - mean_point
-
         # ============SVD(Singular Value Decomposition)=========
-        _, _, vh = svd(centered_points)
-        normal_vector = vh[-1]
-        normal_vector[2] = 0
-        
+        # _, _, vh = svd(centered_points)
+        # normal_vector = vh[-1]
+        # normal_vector[2] = 0
+        #========================================================
+
+        #========================PCA======================
+        cov_matrix = np.cov(centered_points[:, :2], rowvar=False)
+        eigenvalues, eigenvectors = np.linalg.eigh(cov_matrix)
+        normal_vector = eigenvectors[:, np.argmin(eigenvalues)]
+        normal_vector = np.array([normal_vector[0], normal_vector[1], 0])
+        #================================================
         cross_drone_vec = cross_pos - drone_pos
 
         if np.dot(normal_vector, cross_drone_vec) > 0:
             normal_vector = -normal_vector
-        #========================================================
-
-        #========================PCA======================
-        # cov_matrix = np.cov(centered_points, rowvar=False)
-        # eigenvalues, eigenvectors = np.linalg.eigh(cov_matrix)
-        # normal_vector = eigenvectors[:, np.argmin(eigenvalues)]
-        # normal_vector[2] = 0
-
-        # cross_drone_vec = cross_pos - drone_pos
-
-        # if np.dot(normal_vector, cross_drone_vec) > 0:
-        #     normal_vector = -normal_vector
-        #================================================
-
         # drone setpoint
-        return cross_pos + normal_vector / np.linalg.norm(normal_vector) * (offset + (offset - depth_mean)*0.3)
+        return cross_pos + normal_vector / np.linalg.norm(normal_vector) * offset#(offset + (offset - depth_mean)*0.3)
 
     def make_cube_marker(self, pos, color, scale):
         #visualize
@@ -335,6 +326,9 @@ class MarkerDetection(object):
         distance = np.linalg.norm([e_x, e_y])
 
         self.Kp_att = distance * 0.1
+        if self.Kp_att < 0.2:
+            self.Kp_att = 0.2
+
         att_x = self.Kp_att * e_x/distance
         att_y = self.Kp_att * e_y/distance
 
@@ -450,6 +444,8 @@ class MarkerDetection(object):
 
                 for volume in results.xyxy[0]:
                     xyxy = volume.numpy()
+                    if xyxy[4] < 0.5:
+                        break
                     #resize
                     xyxy[0] = xyxy[0] / 640 * resolution[1]
                     xyxy[2] = xyxy[2] / 640 * resolution[1]

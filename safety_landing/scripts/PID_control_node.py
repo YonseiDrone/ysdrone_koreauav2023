@@ -8,8 +8,8 @@ from geometry_msgs.msg import PoseStamped
 from mavros_msgs.msg import State, PositionTarget
 from mavros_msgs.srv import CommandBool, SetMode, CommandTOL
 from math import pow, atan2, sqrt, pi, degrees
-from std_msgs.msg import Float32MultiArray
-
+from std_msgs.msg import Float32MultiArray, Float32
+from koreauav_utils import auto_service
 
 def to_quaternion(yaw, pitch, roll):
     cy = math.cos(yaw * 0.5)
@@ -65,11 +65,13 @@ class PIDControl:
         self.tolerance_position = 0.01
         self.desired_landing_position = PoseStamped()
         self.desired_landing = PositionTarget()
+        self.mission = 0
 
         #Subscriber
         self.relative_dis_sub = rospy.Subscriber("/relative_distance", Float32MultiArray, self.relative_dis_cb)
         self.state_sub = rospy.Subscriber('/mavros/state', State, self.state_cb)
         self.pose_sub = rospy.Subscriber('/mavros/local_position/pose', PoseStamped, self.pose_cb)
+        self.mission_sub = rospy.Subscriber('/mission', Float32, self.mission_cb)
 
         #Publisher
         # Send the desired velocity of UAV to control_node in offboard package.
@@ -94,6 +96,9 @@ class PIDControl:
         # Initialization
         self.relative_dis.data = [0, 0, 0]
     
+    def mission_cb(self, msg):
+        self.mission = msg.data
+
     def relative_dis_cb(self, msg):
         self.relative_dis = msg
         #rospy.loginfo(f"{self.relative_dis.data[0]}, {self.relative_dis.data[1]}, {self.relative_dis.data[2]}")
@@ -109,34 +114,37 @@ class PIDControl:
      
 
     def safety_landing(self, e):
-        if np.isnan(self.relative_dis.data[0]):
-            qx, qy, qz, qw = to_quaternion(self.yaw, 0, 0)
-            self.desired_landing_position.pose.position.x = 0
-            self.desired_landing_position.pose.position.y = 0
-            self.desired_landing_position.pose.position.z = self.current_pose.pose.position.z - 0.5
-            self.desired_landing_position.pose.orientation.x = qx
-            self.desired_landing_position.pose.orientation.y = qy
-            self.desired_landing_position.pose.orientation.z = qz
-            self.desired_landing_position.pose.orientation.w = qw
-            self.desired_landing_position_pub.publish(self.desired_landing_position)
-        else:
-            #rospy.loginfo("HERE")
-            err_x = self.relative_dis.data[0] - 0
-            err_y = self.relative_dis.data[1] - 0
-            err_z = self.relative_dis.data[2] - 0
-            err = self.calc_distance(err_x, err_y, err_z)
+        if self.mission == 6:
+            if np.isnan(self.relative_dis.data[0]):
+                qx, qy, qz, qw = to_quaternion(self.yaw, 0, 0)
+                self.desired_landing_position.pose.position.x = 0
+                self.desired_landing_position.pose.position.y = 0
+                self.desired_landing_position.pose.position.z = self.current_pose.pose.position.z - 0.1
+                self.desired_landing_position.pose.orientation.x = qx
+                self.desired_landing_position.pose.orientation.y = qy
+                self.desired_landing_position.pose.orientation.z = qz
+                self.desired_landing_position.pose.orientation.w = qw
+                self.desired_landing_position_pub.publish(self.desired_landing_position)
+            else:
+                #rospy.loginfo("HERE")
+                err_x = self.relative_dis.data[0] - 0
+                err_y = self.relative_dis.data[1] - 0
+                err_z = self.relative_dis.data[2] - 0
+                err = self.calc_distance(err_x, err_y, err_z)
 
-            #Compute PID
-            vx = self.pid_x.compute(err_x)
-            vy = self.pid_y.compute(err_y)
+                #Compute PID
+                vx = self.pid_x.compute(err_x)
+                vy = self.pid_y.compute(err_y)
 
-            self.desired_landing.yaw = self.yaw
-            self.desired_landing.velocity.x = -vx*0.3
-            self.desired_landing.velocity.y = -vy*0.3
-            self.desired_landing.velocity.z = -0.3
+                self.desired_landing.yaw = self.yaw
+                self.desired_landing.velocity.x = -vx*0.1
+                self.desired_landing.velocity.y = -vy*0.1
+                self.desired_landing.velocity.z = -0.1
 
-            self.desired_landing_pub.publish(self.desired_landing)
-
+                self.desired_landing_pub.publish(self.desired_landing)
+            
+            if self.current_pose.pose.position.z < 0.3:
+                auto_service.call_drone_command(11)
 
 
 if __name__ == "__main__":
