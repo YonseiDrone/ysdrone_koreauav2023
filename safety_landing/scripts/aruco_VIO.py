@@ -221,6 +221,7 @@ class ImageToDistance:
             
             # detect marker configuration
             corners, ids, rejectedImgPoints = self.detector.detectMarkers(cv_image_gray)
+            
             inner_id = None
             outer_id = None
             inner_corners = None
@@ -228,99 +229,96 @@ class ImageToDistance:
 
             if np.all(ids != None):
                 rospy.loginfo(f"AruCo Marker # {ids.size}")
+                # We have cascade AruCo outer_id: 19 innter_id: 0
                 for i in range(ids.size):
                     if outer_id is None:
                         outer_id = ids[i][0]
                         outer_corners = corners[i]
 
-                    if ids.size > 1 and i > outer_id: # assume that inner marker has a specific ID like 1
-                        inner_id = ids[i][0]
-                        inner_corners = corners[i]
-            # outer_id = ids[0][0]
-            # outer_corners = corners[0]
-            # inner_id = ids[1][0]
-            # inner_corners = corners[1]
-
-
+                    if ids.size > 1 and i > outer_id:
+                        inner_id = outer_id
+                        inner_corners = outer_corners
+                        outer_id = ids[i][0]
+                        outer_corners = corners[i]
+                rospy.loginfo(f"AruCo Marker ID inner_id: {inner_id}, outer_id: {outer_id}")
+                
             if inner_id is not None:
-                rospy.loginfo("in!!!!")
-                corners2 = inner_corners[0]
-                ret, rvec, tvec = cv2.solvePnP(self.inner_objp, corners2, self.cameraMatrix, self.distortion)
+                tmp_corner = inner_corners[0]
+                ret, rvec, tvec = cv2.solvePnP(self.inner_objp, tmp_corner, self.cameraMatrix, self.distortion)
             
             elif outer_id is not None:
-                corners2 = outer_corners[0]
-                ret, rvec, tvec = cv2.solvePnP(self.outer_objp, corners2, self.cameraMatrix, self.distortion)
-
+                tmp_corner = outer_corners[0]
+                ret, rvec, tvec = cv2.solvePnP(self.outer_objp, tmp_corner, self.cameraMatrix, self.distortion)
 
             else:
                 self.dis = Float32MultiArray()
                 self.dis.data = (float('nan'), float('nan'), float('nan'))
                 self.distance_pub.publish(self.dis)
-                return
 
-            # detect marker
-            aruco.drawDetectedMarkers(cv_image, corners)
+            if(corners):
+                # detect marker
+                aruco.drawDetectedMarkers(cv_image, corners)
 
-            x_sum = corners[0][0][0][0]+ corners[0][0][1][0]+ corners[0][0][2][0]+ corners[0][0][3][0]
-            y_sum = corners[0][0][0][1]+ corners[0][0][1][1]+ corners[0][0][2][1]+ corners[0][0][3][1]
+                x_sum = corners[0][0][0][0]+ corners[0][0][1][0]+ corners[0][0][2][0]+ corners[0][0][3][0]
+                y_sum = corners[0][0][0][1]+ corners[0][0][1][1]+ corners[0][0][2][1]+ corners[0][0][3][1]
+                    
+                x_center_px = x_sum*.25
+                y_center_px = y_sum*.25
+                self.measured_xy.x = x_center_px
+                self.measured_xy.y = y_center_px
+                self.measured_xy_pub.publish(self.measured_xy)
+                # rospy.loginfo(f"pixel x: {x_center_px}, y: {y_center_px}")
+
+                center = [[x_center_px], [y_center_px]]
+                # rospy.loginfo(f"pixel x: {x_center_px}, y: {y_center_px}")
                 
-            x_center_px = x_sum*.25
-            y_center_px = y_sum*.25
-            self.measured_xy.x = x_center_px
-            self.measured_xy.y = y_center_px
-            self.measured_xy_pub.publish(self.measured_xy)
-            #rospy.loginfo(f"pixel x: {x_center_px}, y: {y_center_px}")
+                # Predict
+                (x_predict, y_predict) = self.KF.predict()
+                self.predicted_xy.x = x_predict[0]
+                self.predicted_xy.y = y_predict[0]
+                self.predicted_xy_pub.publish(self.predicted_xy)
+                # rospy.loginfo(f"predict x: {x_predict}, y: {y_predict}")
+                cv2.rectangle(cv_image, (int(x_predict-30), int(y_predict-30)), (int(x_predict+30), int(y_predict+30)), (255,0,0), 2)
 
-            center = [[x_center_px], [y_center_px]]
-            #rospy.loginfo(f"pixel x: {x_center_px}, y: {y_center_px}")
+                # Update
+                (x_update, y_update) = self.KF.update(center)
+                self.filtered_xy.x = x_update[0]
+                self.filtered_xy.y = y_update[0]
+                self.filtered_xy_pub.publish(self.filtered_xy)
+                cv2.rectangle(cv_image, (int(x_update-30), int(y_update-30)), (int(x_update+30), int(y_update+30)), (0,0,255), 2)
+
+                cv2.putText(cv_image, "Estimated Position", (int(x_update + 30), int(y_update + 10)), 0, 0.5, (0, 0, 255), 2)
+                cv2.putText(cv_image, "Predicted Position", (int(x_predict + 30), int(y_predict)), 0, 0.5, (255, 0, 0), 2)
+                cv2.putText(cv_image, "Measured Position", (int(x_center_px + 30), int(y_center_px - 30)), 0, 0.5, (0,191,255), 2)
+
+
+                #=========================Camera coordinate============================
+                # Initialize camera_coord in pixels
+                camera_coord = np.array([[x_update[0]], [y_update[0]], [1]])
+                # Perform matrix inversion and multiplication
+                camera_coord = np.linalg.inv(self.cameraMatrix).dot(camera_coord)
+                # Multiply with z_world to get the coordinates in units of z_world
+                camera_coord *= tvec[2][0]
+
+                camera_coord = np.array([camera_coord[0][0], camera_coord[1][0], camera_coord[2][0], 1])
+                rospy.loginfo(f"camera_coord: {camera_coord}")
+
+                x = -camera_coord[0]
+                y = camera_coord[1]
+                z = camera_coord[2]
             
-            # Predict
-            (x_predict, y_predict) = self.KF.predict()
-            self.predicted_xy.x = x_predict[0]
-            self.predicted_xy.y = y_predict[0]
-            self.predicted_xy_pub.publish(self.predicted_xy)
-            #rospy.loginfo(f"predict x: {x_predict}, y: {y_predict}")
-            cv2.rectangle(cv_image, (int(x_predict-30), int(y_predict-30)), (int(x_predict+30), int(y_predict+30)), (255,0,0), 2)
 
-            # Update
-            (x_update, y_update) = self.KF.update(center)
-            self.filtered_xy.x = x_update[0]
-            self.filtered_xy.y = y_update[0]
-            self.filtered_xy_pub.publish(self.filtered_xy)
-            cv2.rectangle(cv_image, (int(x_update-30), int(y_update-30)), (int(x_update+30), int(y_update+30)), (0,0,255), 2)
-
-            cv2.putText(cv_image, "Estimated Position", (int(x_update + 30), int(y_update + 10)), 0, 0.5, (0, 0, 255), 2)
-            cv2.putText(cv_image, "Predicted Position", (int(x_predict + 30), int(y_predict)), 0, 0.5, (255, 0, 0), 2)
-            cv2.putText(cv_image, "Measured Position", (int(x_center_px + 30), int(y_center_px - 30)), 0, 0.5, (0,191,255), 2)
-
-
-            #=========================Camera coordinate============================
-            # Initialize camera_coord in pixels
-            camera_coord = np.array([[x_update[0]], [y_update[0]], [1]])
-            # Perform matrix inversion and multiplication
-            camera_coord = np.linalg.inv(self.cameraMatrix).dot(camera_coord)
-            # Multiply with z_world to get the coordinates in units of z_world
-            camera_coord *= tvec[2][0]
-
-            camera_coord = np.array([camera_coord[0][0], camera_coord[1][0], camera_coord[2][0], 1])
-            rospy.loginfo(f"camera_coord: {camera_coord}")
-
-            x = -camera_coord[0]
-            y = camera_coord[1]
-            z = camera_coord[2]
-        
-
-            self.dis.data = (x, y, z)
-            
-            # Node publish - pose information
-            self.distance_pub.publish(self.dis)
+                self.dis.data = (x, y, z)
+                
+                # Node publish - pose information
+                self.distance_pub.publish(self.dis)
 
         # Node publish - cv_image
         cv_image = cv2.cvtColor(cv_image, cv2.COLOR_BGR2RGB)
         self.image_pub.publish(self.bridge.cv2_to_imgmsg(cv_image, "rgb8"))
-        #cv_image = cv2.cvtColor(cv_image, cv2.COLOR_BGR2RGB)
-        #cv2.imshow("cv_image", cv_image)
-        #cv2.waitKey(5)
+        # cv_image = cv2.cvtColor(cv_image, cv2.COLOR_BGR2RGB)
+        # cv2.imshow("cv_image", cv_image)
+        # cv2.waitKey(5)
 
 if __name__ == "__main__":
     rospy.init_node('aruco_VIO', anonymous=True)
