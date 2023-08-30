@@ -22,6 +22,7 @@ class IslyPath(object):
         self.destination_2_pose = PointStamped()
         self.destination_3_pose = PointStamped()
 
+        self.destination_cnt_msg = Float32()
         self.destination_cnt = 0
         self.mission = 0
 
@@ -44,6 +45,7 @@ class IslyPath(object):
         
         #Publisher
         self.isly_destination_pub = rospy.Publisher('/isly_destination_command', PoseStamped, queue_size=50)
+        self.destination_cnt_pub = rospy.Publisher('/destination_cnt', Float32, queue_size=1)
     
     def mission_cb(self, msg):
         self.mission = msg.data
@@ -89,6 +91,7 @@ class IslyPath(object):
     def destination_publisher(self, e):
         if self.init_destination_check and self.mission == 5:
             self.isly_destination.header.stamp = rospy.get_rostime()
+            self.destination_cnt_msg.data = self.destination_cnt
 
             #=====================================LOCAL COORDINATE=======================================================
             self.destination_positions = [

@@ -12,6 +12,7 @@ from koreauav_utils import auto_service
 class PathClass(object):
     def __init__(self):
         self.destination_cnt = 0
+        self.destination_cnt_msg = Float32()
         
         self.current_state = State()
         self.current_pose = PoseStamped()
@@ -44,6 +45,7 @@ class PathClass(object):
         self.waypoint_3_sub = rospy.Subscriber('/WPT_3_enu', PointStamped, self.waypoint_3_cb)
         #Publisher
         self.destination_cmd_pub = rospy.Publisher('/destination_command', PoseStamped, queue_size=1)
+        self.destination_cnt_pub = rospy.Publisher('/destination_cnt', Float32, queue_size=1)
 
 
     def mission_cb(self, msg):
@@ -89,6 +91,7 @@ class PathClass(object):
     def destination_publisher(self, e):
         if self.init_destination_check:
             self.destination_cmd.header.stamp = rospy.get_rostime()
+            self.destination_cnt_msg.data = self.destination_cnt
 
             #=====================================LOCAL COORDINATE=======================================================
             self.destination_positions = [
@@ -104,6 +107,7 @@ class PathClass(object):
             if self.destination_cnt < len(self.destination_positions):
                 self.destination_cmd.pose.position.x, self.destination_cmd.pose.position.y, self.destination_cmd.pose.position.z = self.destination_positions[self.destination_cnt]
                 self.destination_cmd_pub.publish(self.destination_cmd)
+                self.destination_cnt_pub.publish(self.destination_cnt_msg)
             else:
                 if self.mission == 1:
                     auto_service.call_drone_command(2)
