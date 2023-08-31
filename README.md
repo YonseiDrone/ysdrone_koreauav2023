@@ -1,5 +1,5 @@
 # 2023 koreauav Khadas VIM4 main-repo
-**Author: Jusuk Lee, ChanJoon Park, HoKyun Im, Inha Baek**
+**Author: Jusuk Lee, ChanJoon Park, jellyho(Hokyun Im), Inha Baek**
 
 ## offboard
 
