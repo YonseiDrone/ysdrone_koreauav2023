@@ -9,7 +9,7 @@ import cv2
 import glob
 import numpy as np
 import cv2.aruco as aruco
-from std_msgs.msg import String
+from std_msgs.msg import String, Float32
 from sensor_msgs.msg import Image, Imu
 from std_msgs.msg import Float32MultiArray
 from cv_bridge import CvBridge, CvBridgeError
@@ -130,7 +130,6 @@ class KalmanFilter(object):
 class ImageToDistance:
 
     def __init__(self):
-        self.lostnumber = 0
         self.current_state = State()
         self.current_pose = PoseStamped()
         self.bridge = CvBridge()
@@ -140,6 +139,8 @@ class ImageToDistance:
         self.filtered_xy = Point()
         # KalmanFilter(dt, u_x, u_y, std_acc, x_std_meas, y_std_meas)
         self.KF = KalmanFilter(0.1, 1, 1, 1, 0.1, 0.1)
+        self.dis = Float32MultiArray()
+        self.mission = 0
 
         #Publisher
         self.image_pub = rospy.Publisher("/cv_image", Image, queue_size= 1)
@@ -153,6 +154,8 @@ class ImageToDistance:
         self.state_sub = rospy.Subscriber("/mavros/state", State, self.state_cb)
         self.pose_sub = rospy.Subscriber("/mavros/local_position/pose", PoseStamped, self.pose_cb)
         self.imu_sub = rospy.Subscriber("/mavros/imu/data", Imu, self.imu_cb)
+        self.mission_sub = rospy.Subscriber('/mission', Float32, self.mission_cb)
+        
         # cameraMatrix and distortion coefficents
         # Camera intrinsic matrix [[f_x, 0, c_x], [0, f_y, c_y], [0, 0, 1]]
         self.cameraMatrix = np.array([[238.3515418007097, 0. , 200.5], [ 0.0 , 238.3515418007097, 200.5], [0.0 , 0.0 , 1.0]])
@@ -162,7 +165,17 @@ class ImageToDistance:
         self.aruco_dict = aruco.getPredefinedDictionary(aruco.DICT_6X6_50)
         self.parameters = cv2.aruco.DetectorParameters()
         self.detector = cv2.aruco.ArucoDetector(self.aruco_dict, self.parameters)
+
+        # aruco casade structure
+        self.inner_marker_size = 2/6
+        self.outer_marker_size = 2
+        self.inner_objp = np.array([[0, 0, 0], [0, self.inner_marker_size, 0], [self.inner_marker_size, self.inner_marker_size, 0], [self.inner_marker_size, 0, 0]], dtype=np.float32)
+        self.outer_objp = np.array([[0, 0, 0], [0, self.outer_marker_size, 0], [self.outer_marker_size, self.outer_marker_size, 0], [self.outer_marker_size, 0, 0]], dtype=np.float32)
+
         #========================================================================================================
+
+    def mission_cb(self, msg):
+        self.mission = msg.data
 
     def state_cb(self, msg):
         self.current_state = msg
@@ -179,38 +192,50 @@ class ImageToDistance:
             cv_image = self.bridge.imgmsg_to_cv2(data, "bgr8")
         except CvBridgeError as e:
             print(e)
-
-        marker_size = 1
-        objp = np.array([[0, 0, 0], [0, marker_size, 0], [marker_size, marker_size, 0], [marker_size, 0, 0]], dtype=np.float32)
-
         # hese parameters include things like marker detection thresholds, corner refinement methods, and adaptive thresholding parameters
         # we should change these parameters so that can achieve the desired level of marker detection accuracy and robustness
         #parameters = aruco.DetectorParameters_create()
 
-        # convert the image
-        cv_image_gray = cv2.cvtColor(cv_image, cv2.COLOR_BGR2GRAY)
+        if self.mission == 6:
+            # convert the image
+            cv_image_gray = cv2.cvtColor(cv_image, cv2.COLOR_BGR2GRAY)
 
-        # detect marker configuration
-        corners, ids, rejectedImgPoints = self.detector.detectMarkers(cv_image_gray)
+            # detect marker configuration
+            corners, ids, rejectedImgPoints = self.detector.detectMarkers(cv_image_gray)
+            inner_id = None
+            outer_id = None
+            inner_corners = None
+            outer_corners = None
 
-        if np.all(ids != None):
-            self.lostnumber = 0
-            id = ids[0][0]
-            lock_number = 0
-            for i in range(ids.size):
-                if ids[i][0] > id:
-                    id = ids[i][0]
-                    lock_number = i
+            if np.all(ids != None):
+                for i in range(ids.size):
+                    if outer_id is None or ids[i][0] > outer_id:
+                        outer_id = ids[i][0]
+                        outer_corners = corners[i]
 
-            corners2 = corners[0][0]
+                    if ids[i][0] == 1: # assume that inner marker has a specific ID like 1
+                        inner_id = ids[i][0]
+                        inner_corners = corners[i]
 
-            ret, rvec, tvec = cv2.solvePnP(objp, corners2, self.cameraMatrix, self.distortion)
-            # draw axis and detect marker
-            #aruco.drawAxis(cv_image, mtx, dist, rvec[0], tvec[0], 0.01)
+            
+            if inner_id is not None:
+                rospy.loginfo("in!!!!")
+                corners2 = inner_corners[0]
+                ret, rvec, tvec = cv2.solvePnP(self.inner_objp, corners2, self.cameraMatrix, self.distortion)
+            
+            elif outer_id is not None:
+                corners2 = outer_corners[0]
+                ret, rvec, tvec = cv2.solvePnP(self.outer_objp, corners2, self.cameraMatrix, self.distortion)
+
+
+            else:
+                self.dis = Float32MultiArray()
+                self.dis.data = (float('nan'), float('nan'), float('nan'))
+                self.distance_pub.publish(self.dis)
+                return
+
+            # detect marker
             aruco.drawDetectedMarkers(cv_image, corners)
-
-            # incorporate pose information together and print on image
-            dis = Float32MultiArray()
 
             x_sum = corners[0][0][0][0]+ corners[0][0][1][0]+ corners[0][0][2][0]+ corners[0][0][3][0]
             y_sum = corners[0][0][0][1]+ corners[0][0][1][1]+ corners[0][0][2][1]+ corners[0][0][3][1]
@@ -261,22 +286,17 @@ class ImageToDistance:
             z = camera_coord[2]
         
 
-            dis.data = (x, y, z)
+            self.dis.data = (x, y, z)
             
             # Node publish - pose information
-            self.distance_pub.publish(dis)
+            self.distance_pub.publish(self.dis)
 
-        else:
-            dis = Float32MultiArray()
-            dis.data = (float('nan'), float('nan'), float('nan'))
-            self.distance_pub.publish(dis)
-        
         # Node publish - cv_image
         cv_image = cv2.cvtColor(cv_image, cv2.COLOR_BGR2RGB)
         self.image_pub.publish(self.bridge.cv2_to_imgmsg(cv_image, "rgb8"))
         cv_image = cv2.cvtColor(cv_image, cv2.COLOR_BGR2RGB)
-        cv2.imshow("cv_image", cv_image)
-        cv2.waitKey(5)
+        # cv2.imshow("cv_image", cv_image)
+        # cv2.waitKey(5)
 
 if __name__ == "__main__":
     rospy.init_node('aruco_VIO', anonymous=True)

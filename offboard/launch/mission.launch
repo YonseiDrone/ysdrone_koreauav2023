@@ -9,6 +9,8 @@
 		<param name="search_height" value="8.0"/>
 		<param name="building_search_count" value="15"/>
 		<param name="building_stack_count" value="15"/>
+		<param name="building_search_radius" value="3"/>
+		<param name="building_search_speed" value="0.05"/>
 
 	<!--<node pkg="yolo_cross_detection" type="yolo_node.py" name="yolo_node" output="screen" />
 -->

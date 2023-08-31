@@ -21,6 +21,10 @@ from koreauav_utils import auto_service
 import message_filters
 from mpl_toolkits.mplot3d import Axes3D
 
+from sklearn.preprocessing import RobustScaler
+from sklearn.decomposition import PCA
+from sklearn.linear_model import LinearRegression, SGDRegressor
+
 def to_euler_angles(x, y, z, w):
     # roll(x-axis rotation)
     sinr_cosp = 2 * (w*x + y*z)
@@ -54,6 +58,8 @@ class MarkerDetection(object):
         self.setpoint_list = []
         self.crosspos_list = []
         self.dronepos_list = []
+        self.LR = LinearRegression()
+        self.SGD = SGDRegressor(learning_rate='constant', eta0=1e-3)
 
         self.counter = 0
         self.id = 0
@@ -76,9 +82,12 @@ class MarkerDetection(object):
         self.centroid = None
         self.centroid_list = []
 
+        self.downward = None
+
         # Subscriber
         self.rgb_image_sub = message_filters.Subscriber('/camera/rgb/image_raw', Image)
         self.depth_image_sub = message_filters.Subscriber('/camera/depth/image_raw', Image)
+        self.downward_sub = rospy.Subscriber('/cv_image', Image, self.downward_cb)
         self.state_sub = rospy.Subscriber('/mavros/state', State, self.state_cb)
         self.pose_sub = rospy.Subscriber('/mavros/local_position/pose', PoseStamped, self.pose_cb)
         self.mission_sub = rospy.Subscriber('/mission', Float32, self.mission_cb)
@@ -160,6 +169,10 @@ class MarkerDetection(object):
 
     def imu_cb(self, msg):
         self.imu = msg
+
+    def downward_cb(self, msg):
+        bridge = CvBridge()
+        self.downward = bridge.imgmsg_to_cv2(msg, desired_encoding='rgb8')
 
     def state_cb(self, msg):
         prev_state = self.current_state
@@ -248,7 +261,6 @@ class MarkerDetection(object):
         flu_to_cam[:3, 3] = flu_translation
 
         cam_coord = np.dot(flu_to_cam, flu_coord)
-
         #===============================Camera to Pixel coordinate==========================================
         cam_coord = cam_coord[:3]
         image_coordinates = np.dot(self.intrinsic_matrix, cam_coord)
@@ -258,7 +270,7 @@ class MarkerDetection(object):
         return [int(u), int(v)]
     
     
-    def square_sampling(self, left_top, right_bottom, interval=1):
+    def square_sampling(self, left_top, right_bottom, interval=5):
         result = []
         x_start, y_start = left_top
         x_end, y_end = right_bottom
@@ -275,25 +287,37 @@ class MarkerDetection(object):
         mean_point = np.mean(points, axis=0)
         centered_points = points - mean_point
         # # =====SVD(Singular Value Decomposition)======
-        # _, _, vh = svd(centered_points[:, :2])
+        _, _, vh = svd(centered_points)
+        slist = []
+        for vector in vh:
+            s = np.sum(np.dot(centered_points, vector))
+            slist.append(s)
+        min_idx = np.argmin(slist)
+        normal_vector = np.array([vh[min_idx][0], vh[min_idx][1], 0])
         # normal_vector = vh[-1]
         # rospy.loginfo(f"normal vector: {normal_vector}")
         # normal_vector = np.array([normal_vector[0], normal_vector[1], 0])
-        #========================PCA======================
-        cov_matrix = np.cov(centered_points[:, :2], rowvar=False)
-        eigenvalues, eigenvectors = np.linalg.eigh(cov_matrix)
-        normal_vector = eigenvectors[:, np.argmin(eigenvalues)]
-        normal_vector = np.array([normal_vector[0], normal_vector[1], 0])
+        #======================PCA===========================
+        # cov_matrix = np.cov(centered_points[:, :2], rowvar=False)
+        # eigenvalues, eigenvectors = np.linalg.eigh(cov_matrix)
+        # normal_vector = eigenvectors[:, np.argmin(eigenvalues)]
+        # normal_vector = np.array([normal_vector[0], normal_vector[1], 0])
         #================================================
-
         #========================LSTSQ======================
-        # A = np.column_stack((other_pos, np.ones(other_pos.shape[0])))
+        # A = np.column_stack((other_pos[:, :2], np.ones(other_pos.shape[0])))
         # c, _, _, _ = lstsq(A, np.ones(other_pos.shape[0]))
-        # normal_vector = np.array([c[0], c[1], c[2]])
+        # normal_vector = np.array([c[0], c[1], 0])
         #======================================================
+        #========================LR============================
+        # self.LR.fit(points[:, 0].reshape(-1, 1), points[:, 1].reshape(-1, 1))
+        # normal_vector = np.array([1, -1/self.LR.coef_[0][0], 0])
+        #========================================================
+        #========================SGD============================
+        # self.SGD.fit(points[:, 0].reshape(-1, 1), points[:, 1])
+        # normal_vector = np.array([1, self.SGD.coef_[0], 0])
+        #========================================================
 
         cross_drone_vec = cross_pos - drone_pos
-
         if np.dot(normal_vector, cross_drone_vec) > 0:
             normal_vector = -normal_vector
 
@@ -503,7 +527,7 @@ class MarkerDetection(object):
                     #rospy.loginfo(f"setpoint: {setpoint}")
                     #rospy.loginfo(f"get_2d: {self.get_2d_coord(setpoint)}")
                     try:
-                        cv2.line(rgb_frame, (int(cross_pos[0]), int(cross_pos[1])), self.get_2d_coord(setpoint), (255, 0, 0), thickness=3)
+                        cv2.line(rgb_frame, (int(cross_pos[0]), int(cross_pos[1])), self.get_2d_coord(cross_pos + (setpoint-cross_pos)*0.5), (255, 0, 0), thickness=3)
                     except:
                         pass
                     # crossmarker break()
@@ -514,6 +538,11 @@ class MarkerDetection(object):
                 #rospy.loginfo(f"target pose: {self.target_pose}")
             try:
                 cv2.putText(rgb_frame, f"Mission : {int(self.mission)} \"{self.mission_rep}\"", (0, 25), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(0, 0, 0), thickness=2)
+                if self.downward is not None:
+                    size = 430 if self.mission == 6 else 250
+                    downward = cv2.resize(self.downward, (size, size))
+                    rgb_frame[-(size+5):, -(size+5):] = np.zeros((size+5, size+5, 3))
+                    rgb_frame[-size:, -size:] = downward
                 self.image_pub.publish(bridge.cv2_to_imgmsg(rgb_frame, "rgb8"))
             except CvBridgeError as e:
                 print(e)

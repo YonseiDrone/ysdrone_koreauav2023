@@ -58,6 +58,7 @@ class BuildingSearch(object):
         self.searching_status = 0
         self.building_centroid = []
         self.pointcloud_centroid = None
+        self.current_angle = 0.0
 
         # ROS params
         self.srv_mode = rospy.get_param("/srv_mode", True)
@@ -68,6 +69,8 @@ class BuildingSearch(object):
         self.search_height = rospy.get_param('search_height')
         self.building_search_count = rospy.get_param("building_search_count")
         self.building_stack_count = rospy.get_param("building_stack_count")
+        self.radius = rospy.get_param("building_search_radius")
+        self.speed = rospy.get_param("building_search_speed")
 
         # ROS publisher & subscriber
         self.cloud_sub = rospy.Subscriber('/local_pointcloud', PointCloud2, self.cloud_cb)
@@ -142,12 +145,12 @@ class BuildingSearch(object):
                 pass
 
             if len(self.building_centroid) < self.building_search_count:
-                self.target_pose.pose.position.x = self.last_goal_x
-                self.target_pose.pose.position.y = self.last_goal_y
+                self.current_angle += self.speed
+                self.target_pose.pose.position.x = self.last_goal_x + self.radius * math.cos(self.current_angle)
+                self.target_pose.pose.position.y = self.last_goal_y + self.radius * math.sin(self.current_angle)
                 self.target_pose.pose.position.z = self.search_height
-                roll, pitch, yaw = to_euler_angles(self.imu.orientation.x, self.imu.orientation.y, self.imu.orientation.z, self.imu.orientation.w)
-                target_yaw = yaw - 0.2
-                qx, qy, qz, qw = to_quaternion(target_yaw, pitch, roll)
+
+                qx, qy, qz, qw = to_quaternion(self.current_angle, 0, 0)
                 self.target_pose.pose.orientation.x = qx
                 self.target_pose.pose.orientation.y = qy
                 self.target_pose.pose.orientation.z = qz
@@ -155,8 +158,8 @@ class BuildingSearch(object):
                 self.target_pose_pub.publish(self.target_pose)
             
             elif self.building_search_count <= len(self.building_centroid) <= self.building_search_count + self.building_stack_count:
-                self.target_pose.pose.position.x = self.last_goal_x
-                self.target_pose.pose.position.y = self.last_goal_y
+                self.target_pose.pose.position.x = self.last_goal_x + self.radius * math.cos(self.current_angle)
+                self.target_pose.pose.position.y = self.last_goal_y + self.radius * math.sin(self.current_angle)
                 self.target_pose.pose.position.z = self.search_height
                 error_yaw = math.atan2(self.pointcloud_centroid[1]-self.current_pose.pose.position.y, self.pointcloud_centroid[0]-self.current_pose.pose.position.x)
                 qz = math.sin(error_yaw/2.0)

@@ -93,7 +93,7 @@ class IslyPath(object):
 
             #=====================================LOCAL COORDINATE=======================================================
             self.destination_positions = [
-                (65, -41, 10),
+                (80, -41, 15),
                 (34, -16, 15),
                 (0, 0, 15)
             ]
@@ -109,7 +109,7 @@ class IslyPath(object):
                 if self.mission == 5:
                     auto_service.call_drone_command(6)
 
-            if self.calc_xy_err(self.isly_destination, self.current_pose) < 0.3 and self.calc_z_err(self.isly_destination, self.current_pose) < 0.2:
+            if self.mission ==5 and self.calc_xy_err(self.isly_destination, self.current_pose) < 0.3 and self.calc_z_err(self.isly_destination, self.current_pose) < 0.2:
                 self.destination_cnt += 1
                 # 여기 나중에 수정 필요
                 # if self.destination_cnt > 4:

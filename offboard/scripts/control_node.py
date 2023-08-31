@@ -276,7 +276,7 @@ class ControlClass(object):
         if self.cmd_state == 0:
             self.target_pose.pose.position.x = 0
             self.target_pose.pose.position.y = 0
-            self.target_pose.pose.position.z = 15
+            self.target_pose.pose.position.z = 2
             self.target_pose_pub.publish(self.target_pose)
 
             if abs(self.target_pose.pose.position.z - self.current_pose.pose.position.z) < 0.1:
@@ -310,13 +310,16 @@ class ControlClass(object):
 
         # Mission 6(Safety Landing)
         if self.cmd_state == 6:
-            if np.isnan(self.relative_dis.data[0]):
-                self.target_pose_pub.publish(self.desired_landing_position)
-                rospy.loginfo("position mode")
+            try:
+                if np.isnan(self.relative_dis.data[0]):
+                    self.target_pose_pub.publish(self.desired_landing_position)
+                    rospy.loginfo("position mode")
 
-            else:
-                self.desired_landing_pub.publish(self.desired_landing)
-                rospy.loginfo("velocity mode")
+                else:
+                    self.desired_landing_pub.publish(self.desired_landing)
+                    rospy.loginfo("velocity mode")
+            except IndexError:
+                self.target_pose_pub.publish(self.current_pose)
             #rospy.loginfo(f"Velocity - x: {self.desired_landing.velocity.x}, y: {self.desired_landing.velocity.y}, z : {self.desired_landing.velocity.z}")
         
         # Mission 7(Position Control)
