@@ -49,6 +49,7 @@ def to_euler_angles(x, y, z, w):
 
 class BuildingSearch(object):
     def __init__(self):
+        self.flag = 0
         self.current_pose = PoseStamped()
         self.current_state = State()
         self.target_pose = PoseStamped()
@@ -58,6 +59,9 @@ class BuildingSearch(object):
         self.searching_status = 0
         self.building_centroid = []
         self.pointcloud_centroid = None
+        self.cube_array = MarkerArray()
+        self.current_angle = 0.0
+        self.cube_arr_pub = rospy.Publisher('/nearest_point', MarkerArray, queue_size=1)
 
         # ROS params
         self.srv_mode = rospy.get_param("/srv_mode", True)
@@ -68,6 +72,8 @@ class BuildingSearch(object):
         self.search_height = rospy.get_param('search_height', 3)
         self.building_search_count = rospy.get_param("building_search_count", 15)
         self.building_stack_count = rospy.get_param("building_stack_count", 15)
+        self.radius = rospy.get_param("building_search_radius", 1.0)
+        self.speed = rospy.get_param("building_search_speed", 0.1)
 
         # ROS publisher & subscriber
         self.cloud_sub = rospy.Subscriber('/local_pointcloud', PointCloud2, self.cloud_cb)
@@ -145,21 +151,29 @@ class BuildingSearch(object):
                 rospy.logwarn("Empty input cloud!")
 
             if len(self.building_centroid) < self.building_search_count:
-                self.target_pose.pose.position.x = self.last_goal_x
-                self.target_pose.pose.position.y = self.last_goal_y
+                
+                if self.flag == 0:
+                    _, _, self.current_angle = to_euler_angles(self.current_pose.pose.orientation.x, self.current_pose.pose.orientation.y, self.current_pose.pose.orientation.z, self.current_pose.pose.orientation.w)
+                    self.flag += 1
+                
+                self.target_pose.pose.position.x = self.current_pose.pose.position.x + 0.5 * (self.last_goal_x + self.radius * math.cos(self.current_angle) - self.current_pose.pose.position.x)
+                self.target_pose.pose.position.y = self.current_pose.pose.position.y + 0.5 * (self.last_goal_y + self.radius * math.sin(self.current_angle) - self.current_pose.pose.position.y)
                 self.target_pose.pose.position.z = self.search_height
-                roll, pitch, yaw = to_euler_angles(self.imu.orientation.x, self.imu.orientation.y, self.imu.orientation.z, self.imu.orientation.w)
-                target_yaw = yaw + 0.1
-                qx, qy, qz, qw = to_quaternion(target_yaw, pitch, roll)
+                # roll, pitch, yaw = to_euler_angles(self.imu.orientation.x, self.imu.orientation.y, self.imu.orientation.z, self.imu.orientation.w)
+                # target_yaw = yaw + 0.1
+                # qx, qy, qz, qw = to_quaternion(target_yaw, pitch, roll)
+                qx, qy, qz, qw = to_quaternion(self.current_angle, 0, 0)
                 self.target_pose.pose.orientation.x = qx
                 self.target_pose.pose.orientation.y = qy
                 self.target_pose.pose.orientation.z = qz
                 self.target_pose.pose.orientation.w = qw
                 self.target_pose_pub.publish(self.target_pose)
+
+                self.current_angle += self.speed
             
             elif self.building_search_count<=len(self.building_centroid)<=self.building_search_count+self.building_stack_count:
-                self.target_pose.pose.position.x = self.last_goal_x
-                self.target_pose.pose.position.y = self.last_goal_y
+                self.target_pose.pose.position.x = self.last_goal_x + self.radius * math.cos(self.current_angle)
+                self.target_pose.pose.position.y = self.last_goal_y + self.radius * math.sin(self.current_angle)
                 self.target_pose.pose.position.z = self.search_height
                 error_yaw = math.atan2(self.pointcloud_centroid[1]-self.current_pose.pose.position.y, self.pointcloud_centroid[0]-self.current_pose.pose.position.x)
                 qz = math.sin(error_yaw/2.0)
@@ -192,6 +206,25 @@ class BuildingSearch(object):
 
                 if len(self.building_centroid) == self.building_search_count+self.building_stack_count+10:
                     auto_service.call_drone_command(3)
+            
+                
+    def draw_cube(self, pos):
+        #visualize
+        m = Marker()
+        m.type = Marker.CUBE
+        m.header.frame_id = 'local_origin'
+        m.header.stamp = rospy.Time.now()
+        m.action = Marker.ADD
+        m.scale.x = 0.2
+        m.scale.y = 0.2
+        m.scale.z = 0.2
+        m.color.a = 1.0
+        m.color.r = 230
+        m.color.g = 230
+        m.color.b = 250
+        m.pose.position = Point(pos[0], pos[1], pos[2])
+
+        return marker
 
 
 if __name__ == "__main__":
