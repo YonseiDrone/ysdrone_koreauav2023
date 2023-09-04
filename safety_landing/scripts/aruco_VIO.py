@@ -185,9 +185,11 @@ class ImageToDistance:
         self.detector = cv2.aruco.ArucoDetector(self.aruco_dict, self.parameters)
 
         # aruco casade structure
-        self.inner_marker_size = 0.325/6
-        self.outer_marker_size = 0.325
+        self.inner_marker_size = 0.08
+        self.mid_marker_size = 0.45
+        self.outer_marker_size = 1.92
         self.inner_objp = np.array([[0, 0, 0], [0, self.inner_marker_size, 0], [self.inner_marker_size, self.inner_marker_size, 0], [self.inner_marker_size, 0, 0]], dtype=np.float32)
+        self.mid_objp = np.array([[0, 0, 0], [0, self.mid_marker_size, 0], [self.mid_marker_size, self.mid_marker_size, 0], [self.mid_marker_size, 0, 0]], dtype=np.float32)
         self.outer_objp = np.array([[0, 0, 0], [0, self.outer_marker_size, 0], [self.outer_marker_size, self.outer_marker_size, 0], [self.outer_marker_size, 0, 0]], dtype=np.float32)
         #========================================================================================================
         device_index = get_usb_device()
@@ -215,7 +217,7 @@ class ImageToDistance:
         ret, cv_image = self.cap.read()
         height, width, _ = cv_image.shape
 
-        if self.mission == 6:
+        if self.mission in [6, 10]:
             # convert the image
             cv_image_gray = cv2.cvtColor(cv_image, cv2.COLOR_BGR2GRAY)
             
@@ -224,31 +226,42 @@ class ImageToDistance:
             
             inner_id = None
             outer_id = None
+            mid_id = None
             inner_corners = None
+            mid_corners = None
             outer_corners = None
-
+            
             if np.all(ids != None):
                 rospy.loginfo(f"AruCo Marker # {ids.size}")
-                # We have cascade AruCo outer_id: 19 innter_id: 0
+                # We have cascade AruCo outer_id: 19 mid_id: 1 inner_id: 0
                 for i in range(ids.size):
-                    if outer_id is None:
+                    if ids[i][0] == 19:
                         outer_id = ids[i][0]
                         outer_corners = corners[i]
-
-                    if ids.size > 1 and i > outer_id:
-                        inner_id = outer_id
-                        inner_corners = outer_corners
-                        outer_id = ids[i][0]
-                        outer_corners = corners[i]
-                rospy.loginfo(f"AruCo Marker ID inner_id: {inner_id}, outer_id: {outer_id}")
+                    # The inner marker has an ID of 1 now
+                    if ids[i][0] == 1:
+                        mid_id = ids[i][0]
+                        mid_corners = corners[i]
+                    if ids[i][0] == 0:
+                        inner_id = ids[i][0]
+                        inner_corners = corners[i]
+                        
+                rospy.loginfo(f"AruCo Marker ID inner_id: {inner_id}, mid_id: {mid_id} outer_id: {outer_id}")
                 
             if inner_id is not None:
                 tmp_corner = inner_corners[0]
                 ret, rvec, tvec = cv2.solvePnP(self.inner_objp, tmp_corner, self.cameraMatrix, self.distortion)
+                rospy.loginfo("Inner")
+            
+            elif mid_id is not None:
+                tmp_corner = mid_corners[0]
+                ret, rvec, tvec = cv2.solvePnP(self.mid_objp, tmp_corner, self.cameraMatrix, self.distortion)
+                rospy.loginfo("Mid")
             
             elif outer_id is not None:
                 tmp_corner = outer_corners[0]
                 ret, rvec, tvec = cv2.solvePnP(self.outer_objp, tmp_corner, self.cameraMatrix, self.distortion)
+                rospy.loginfo("Outer")
 
             else:
                 self.dis = Float32MultiArray()
@@ -294,14 +307,17 @@ class ImageToDistance:
 
                 #=========================Camera coordinate============================
                 # Initialize camera_coord in pixels
+                #===================KALMAN================================
                 camera_coord = np.array([[x_update[0]], [y_update[0]], [1]])
+                #camera_coord = np.array([[x_center_px], [y_center_px], [1]])
+                #=========================================================
                 # Perform matrix inversion and multiplication
                 camera_coord = np.linalg.inv(self.cameraMatrix).dot(camera_coord)
                 # Multiply with z_world to get the coordinates in units of z_world
                 camera_coord *= tvec[2][0]
 
                 camera_coord = np.array([camera_coord[0][0], camera_coord[1][0], camera_coord[2][0], 1])
-                rospy.loginfo(f"camera_coord: {camera_coord}")
+                #rospy.loginfo(f"camera_coord: {camera_coord}")
 
                 x = -camera_coord[0]
                 y = camera_coord[1]

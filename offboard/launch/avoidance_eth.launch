@@ -67,4 +67,13 @@
   </node>
 
   <node pkg="offboard" type="control_node.py" name="control_node" required="true" output="screen"/>
+  <node pkg="yolo_cross_detection" type="yolo_tf_node.py" name="yolo_tf_node" output="screen" />
+		<param name="yolo_offset" value="4.0"/>
+		<param name="circular_speed" value="0.1"/>
+		<param name="radius" value="8.0"/>
+		<param name="yolo_search_count" value="7"/>
+		<param name="yolo_stack_count" value="15"/>
+		<param name="setpoint_criterion" value="1"/>
+		<param name="setpoint_count" value="2"/>
+		<param name="obstacle_bound" value="2.5"/>
 </launch>

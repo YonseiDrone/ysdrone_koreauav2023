@@ -164,6 +164,7 @@ include_directories(
 catkin_install_python(PROGRAMS
    scripts/yolo_node.py
    scripts/yolo_tf_node.py
+   scripts/image_recorder.py
    DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 

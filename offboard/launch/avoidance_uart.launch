@@ -63,10 +63,21 @@
   <node name="local_planner_node" pkg="local_planner" type="local_planner_node" output="screen" required="true" >
     <param name="goal_x_param" value="0" />
     <param name="goal_y_param" value="0"/>
-    <param name="goal_z_param" value="4" />
+    <param name="goal_z_param" value="15" />
     <param name="accept_goal_input_topic" value="true" />
     <rosparam param="pointcloud_topics" subst_value="True">$(arg pointcloud_topics)</rosparam>
   </node>
 
   <node pkg="offboard" type="control_node.py" name="control_node" required="true" output="screen"/>
+  <node pkg="yolo_cross_detection" type="yolo_tf_node.py" name="yolo_tf_node" output="screen" />
+		<param name="yolo_offset" value="4.25"/>
+		<param name="circular_speed" value="0.3"/>
+		<param name="radius" value="7.0"/>
+		<param name="yolo_search_count" value="5"/>
+		<param name="yolo_stack_count" value="15"/>
+		<param name="setpoint_criterion" value="0.5"/>
+		<param name="setpoint_count" value="5"/>
+		<param name="obstacle_bound" value="2.0"/>
+    
+  <node pkg="yolo_cross_detection" type="image_recorder.py" name="image_recorder" output="screen" />
 </launch>
