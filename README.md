@@ -1,5 +1,5 @@
 # 2023 koreauav Khadas VIM4 main-repo
-**Author: Jusuk Lee, ChanJoon Park, HoKyun Im, Inha Baek**
+**Author: Jusuk Lee, ChanJoon Park, Hokyun Im, Inha Baek**
 
 ## offboard
 
@@ -13,6 +13,7 @@ Offboard 모드에서 드론을 제어하기 위한 패키지로 Service를 통�
   > [!IMPORTANT]\
   > 이 런치파일을 구동하였을 때는 경로점이 맞게 생성되었는지 반드시 확인해야 한다.
   > `path_node`에서 ros param으로 설정해주는 `destination_1_pose_x`, `destination_1_pose_y` ~ `destination_3_pose_x`, `destination_3_pose_y`와 `destination_z` 을 `rosparam get`으로 비행 전 체크해주어야 한다.
+  > `bash view_destination.sh` 로 한번에 바로 확인 가능하다.
 
   - [mission.launch](offboard/launch/mission.launch): WPT#3 도달 후 수행하는 임무들(건물 탐색, 마커 인식, 화물 배송, 정밀 착륙)이 포함된 런치파일. `setmode_node`가 포함되어 있어 **앞선 런치파일들이 실행된 상태에서 런치되면 OFFBOARD 모드로 전환되므로 주의해야 한다.**
 - [scripts](offboard/scripts)
