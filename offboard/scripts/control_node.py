@@ -94,6 +94,8 @@ class ControlClass(object):
         self.mission_num = Float32()
         self.mission_rep = String()
         self.RL_target_vel = Twist()
+        self.landing_velocity_position = PoseStamped()
+        self.landing_velocity = PositionTarget()
         self.launch_setposition = PoseStamped()
         self.launch_setposition_marker = Marker()
         self.launch_setposition_marker_array = MarkerArray()
@@ -109,20 +111,6 @@ class ControlClass(object):
         self.resp.mode = 'Takeoff Mode'
         self.relative_dis = Float32MultiArray()
     
-        #Subscriber
-        self.state_sub = rospy.Subscriber('/mavros/state', State, self.state_cb)
-        self.pose_sub = rospy.Subscriber('/mavros/local_position/pose', PoseStamped, self.pose_cb) 
-        self.destination_command_sub = rospy.Subscriber('/destination_command', PoseStamped, self.destination_command_cb)
-        self.isly_destination_command_sub = rospy.Subscriber('/isly_destination_command', PoseStamped, self.isly_destination_command_cb)
-        self.desired_landing_sub = rospy.Subscriber('/desired_landing', PositionTarget, self.desired_landing_cb)
-        self.desired_landing_position_sub = rospy.Subscriber('/desired_landing_position', PoseStamped, self.desired_landing_position_cb)
-        self.relative_dis_sub = rospy.Subscriber("/relative_distance", Float32MultiArray, self.relative_dis_cb)
-        self.RL_target_vel_sub = rospy.Subscriber('/landing_velocity', Twist, self.RL_target_vel_cb)
-        self.launch_setposition_sub = rospy.Subscriber('/launch_setposition', PoseStamped, self.launch_setposition_cb)
-        self.avoidance_pos_sub = rospy.Subscriber('/avoidance/setpoint_position/local', PoseStamped, self.avoidance_pos_cb)
-        self.building_target_sub = rospy.Subscriber('/building/search/target_pose', PoseStamped, self.building_target_cb)
-        self.move_sub = rospy.Subscriber('/move_to_launch', PoseStamped, self.move_cb)
-
         #Publisher
         self.target_pose_pub = rospy.Publisher('/mavros/setpoint_position/local', PoseStamped, queue_size=1)
         self.avoidance_pos_pub = rospy.Publisher('input/goal_position', MarkerArray, queue_size=1)
@@ -131,6 +119,23 @@ class ControlClass(object):
         
         self.mission_pub = rospy.Publisher('/mission', Float32, queue_size=1)
         self.mission_rep_pub = rospy.Publisher('/mission_rep', String, queue_size=1)
+        
+        #Subscriber
+        self.state_sub = rospy.Subscriber('/mavros/state', State, self.state_cb)
+        self.pose_sub = rospy.Subscriber('/mavros/local_position/pose', PoseStamped, self.pose_cb) 
+        self.destination_command_sub = rospy.Subscriber('/destination_command', PoseStamped, self.destination_command_cb)
+        self.isly_destination_command_sub = rospy.Subscriber('/isly_destination_command', PoseStamped, self.isly_destination_command_cb)
+        self.desired_landing_sub = rospy.Subscriber('/desired_landing', PositionTarget, self.desired_landing_cb)
+        self.desired_landing_position_sub = rospy.Subscriber('/desired_landing_position', PoseStamped, self.desired_landing_position_cb)
+        self.relative_dis_sub = rospy.Subscriber("/relative_distance", Float32MultiArray, self.relative_dis_cb)
+        #self.RL_target_vel_sub = rospy.Subscriber('/landing_velocity', Twist, self.RL_target_vel_cb)
+        self.launch_setposition_sub = rospy.Subscriber('/launch_setposition', PoseStamped, self.launch_setposition_cb)
+        self.avoidance_pos_sub = rospy.Subscriber('/avoidance/setpoint_position/local', PoseStamped, self.avoidance_pos_cb)
+        self.building_target_sub = rospy.Subscriber('/building/search/target_pose', PoseStamped, self.building_target_cb)
+        self.move_sub = rospy.Subscriber('/move_to_launch', PoseStamped, self.move_cb)
+        self.landing_velocity_sub = rospy.Subscriber('/landing_velocity', PositionTarget, self.landing_velocity_cb)
+        self.landing_velocity_position_sub = rospy.Subscriber('/landing_velocity_position', PoseStamped, self.landing_velocity_position_cb)
+
     
   
     def avoidance_pos_cb(self, msg):
@@ -143,9 +148,10 @@ class ControlClass(object):
         elif self.cmd_state == 4 and self.move.pose.position.z != 0:
             self.avoidance = self.move
 
-        if self.cmd_state not in [6, 9, 11]:
+        if self.cmd_state not in [6, 9, 10, 11]:
             self.target_pose_pub.publish(self.avoidance)
     #====================================================
+    
 
     def move_cb(self, msg):
         self.move = msg
@@ -187,7 +193,7 @@ class ControlClass(object):
 
     def desired_landing_cb(self, msg):
         self.desired_landing.coordinate_frame = PositionTarget.FRAME_LOCAL_NED
-        self.desired_landing.type_mask = PositionTarget.IGNORE_AFX | PositionTarget.IGNORE_AFY | PositionTarget.IGNORE_AFZ | PositionTarget.IGNORE_PX | PositionTarget.IGNORE_PY | PositionTarget.IGNORE_PZ
+        self.desired_landing.type_mask = PositionTarget.IGNORE_AFX + PositionTarget.IGNORE_AFY + PositionTarget.IGNORE_AFZ + PositionTarget.IGNORE_PX + PositionTarget.IGNORE_PY + PositionTarget.IGNORE_PZ
         self.desired_landing.velocity.x = msg.velocity.x
         self.desired_landing.velocity.y = msg.velocity.y
         self.desired_landing.velocity.z = msg.velocity.z
@@ -196,7 +202,19 @@ class ControlClass(object):
 
     def desired_landing_position_cb(self, msg):
         self.desired_landing_position = msg
-
+        
+    def landing_velocity_cb(self, msg):
+        self.landing_velocity.coordinate_frame = PositionTarget.FRAME_LOCAL_NED
+        self.landing_velocity.type_mask = PositionTarget.IGNORE_AFX + PositionTarget.IGNORE_AFY + PositionTarget.IGNORE_AFZ + PositionTarget.IGNORE_PX + PositionTarget.IGNORE_PY + PositionTarget.IGNORE_PZ 
+        self.landing_velocity.velocity.x = msg.velocity.x
+        self.landing_velocity.velocity.y = msg.velocity.y
+        self.landing_velocity.velocity.z = msg.velocity.z
+        self.landing_velocity.yaw = msg.yaw
+        self.landing_velocity.yaw_rate = 1
+        
+    def landing_velocity_position_cb(self, msg):
+        self.landing_velocity_position = msg
+        
     def relative_dis_cb(self, msg):
         self.relative_dis = msg
 
@@ -237,7 +255,7 @@ class ControlClass(object):
             self.resp.mode = 'Building Search Mode'
             self.resp.res = True
         elif self.cmd_state == 3:
-            self.resp.mode = 'Cross Marker Approch Mode'
+            self.resp.mode = 'Marker Approach Mode'
             self.resp.res = True
         elif self.cmd_state == 4:
             self.resp.mode = 'Cargo Launch Mode'
@@ -261,7 +279,7 @@ class ControlClass(object):
             self.resp.mode = 'RL Landing with Aruco'
             self.resp.res = True
         elif self.cmd_state == 11:
-            self.resp.mode = 'Landing and disarming'
+            self.resp.mode = 'Landing and Disarming'
             self.resp.res = True
         rospy.loginfo(f'Received request : {req.command} && Current Mode : {self.resp.mode} && Enable :{self.resp.res}')
         return self.resp
@@ -277,7 +295,7 @@ class ControlClass(object):
         if self.cmd_state == 0:
             self.target_pose.pose.position.x = 0
             self.target_pose.pose.position.y = 0
-            self.target_pose.pose.position.z = 4
+            self.target_pose.pose.position.z = 15.0
             self.target_pose.pose.orientation.x = self.current_pose.pose.orientation.x
             self.target_pose.pose.orientation.y = self.current_pose.pose.orientation.y
             self.target_pose.pose.orientation.z = self.current_pose.pose.orientation.z
@@ -288,7 +306,7 @@ class ControlClass(object):
                 auto_service.call_drone_command(1)
         # Mission 1(Obstacle Avoidance Planner)
         if self.cmd_state == 1:
-            new_config = {"obstacle_cost_param_": 5}
+            new_config = {"obstacle_cost_param_": 4}
             config = self.dynamic_client.update_configuration(new_config)
             self.avoidance_pos_pub.publish(self.destination_command_marker_array)
             #rospy.loginfo(f"{self.destination_command_marker_array}")
@@ -317,14 +335,13 @@ class ControlClass(object):
             new_config = {"obstacle_cost_param_": 5}
             config = self.dynamic_client.update_configuration(new_config)
             self.avoidance_pos_pub.publish(self.isly_destination_command_marker_array)
-            rospy.loginfo(f'Target Waypoint - x :{self.isly_destination_command_marker.pose.position.x}, y :{self.isly_destination_command_marker.pose.position.y}, z :{self.isly_destination_command_marker.pose.position.z}')
+            #rospy.loginfo(f'Target Waypoint - x :{self.isly_destination_command_marker.pose.position.x}, y :{self.isly_destination_command_marker.pose.position.y}, z :{self.isly_destination_command_marker.pose.position.z}')
 
         # Mission 6(Safety Landing)
         if self.cmd_state == 6:
             try:
                 if np.isnan(self.relative_dis.data[0]):
                     self.target_pose_pub.publish(self.desired_landing_position)
-
                 else:
                     self.desired_landing_pub.publish(self.desired_landing)
             except IndexError:
@@ -352,14 +369,13 @@ class ControlClass(object):
 
         # Mission 10(RL Landing with Aruco)
         if self.cmd_state == 10:
-            qx, qy, qz, qw = to_quaternion(90*math.pi/180, 0, 0)
-            self.target_pose.pose.orientation.x = qx
-            self.target_pose.pose.orientation.y = qy
-            self.target_pose.pose.orientation.z = qz
-            self.target_pose.pose.orientation.w = qw
-            self.target_pose_pub.publish(self.target_pose) 
-            self.landing_velocity_pub.publish(self.RL_target_vel)
-            rospy.loginfo(f"Velocity - x: {self.RL_target_vel.linear.x}, y: {self.RL_target_vel.linear.y}, z: {self.RL_target_vel.linear.z}")
+            try:
+                if np.isnan(self.relative_dis.data[0]):
+                    self.target_pose_pub.publish(self.landing_velocity_position)
+                else:
+                    self.desired_landing_pub.publish(self.landing_velocity)
+            except IndexError as e:
+                self.target_pose_pub.publish(self.current_pose)
             
         if self.cmd_state == 11:
             pass

@@ -2,7 +2,7 @@
 import rospy
 from std_msgs.msg import Float32
 from mavros_msgs.msg import State 
-from mavros_msgs.srv import CommandBool, SetMode
+from mavros_msgs.srv import CommandBool, SetMode, CommandLong
 from geometry_msgs.msg import PoseStamped
 
 
@@ -63,15 +63,39 @@ class SetmodeClass(object):
         except rospy.ServiceException as e:
             rospy.loginfo("Service call failed : %s" %e)
 
+    ##todo
     def setArm(self):
         rate = rospy.Rate(0.5)
         while True:
+            self.INIT_ACTUATOR()
             if self.current_state.armed is not True:
                 self.arming_client(True)
             else:
                 break
             rate.sleep()
 
+    ##todo
+    def INIT_ACTUATOR(self):
+        # rospy.loginfo('Waiting for server...')
+        rospy.wait_for_service('/mavros/cmd/command')
+        try:
+            servo_control_srv = rospy.ServiceProxy('/mavros/cmd/command', CommandLong)
+
+            msg = CommandLong()
+            resp = servo_control_srv(broadcast=False, command=187, confirmation=False, param1=1, param2=-1, param3=0, param4=0, param5=0, param6=0, param7=0)
+
+            # rospy.loginfo('Try service call...')
+            if resp.success:
+                rospy.loginfo("Servo initialized successfully")
+                # print(f"result: {resp.result}")
+            else:
+                rospy.loginfo("Failed to control servo 1")
+            return resp.success
+
+        except rospy.ServiceException as e:
+            print("Service call failed: %s" % e)
+            return False
+	
     def check_FCU_connection(self):
         while not self.current_state.connected:
             rospy.loginfo_throttle(1, "Wait FCU connection")

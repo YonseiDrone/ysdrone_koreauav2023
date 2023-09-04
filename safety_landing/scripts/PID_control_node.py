@@ -85,8 +85,8 @@ class PIDControl:
         self.dt = (1.0 / self.hz)
 
         # PID controller class 
-        self.pid_x = PID(kp=1, dt = self.dt)
-        self.pid_y = PID(kp=1, dt = self.dt)
+        self.pid_x = PID(kp=0.3, kd=0.05, ki=0.0, dt = self.dt)
+        self.pid_y = PID(kp=0.3, kd=0.05, ki=0.0, dt = self.dt)
 
         # Desired orientation
         self.roll = 0
