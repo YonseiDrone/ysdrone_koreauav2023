@@ -65,10 +65,11 @@ class CargoLaunch(object):
 
 		self.move_pub = rospy.Publisher('/move_to_launch', PoseStamped, queue_size=1)
 
+		self.servo_init = False
 		self.servo_block = False
 		self.servo_launch = False
 		self.t_pwm = time.time()
-		self.DEBUG = True
+		self.DEBUG = False
 
 	def launch_setposition_cb(self, msg):
 		self.launch_setposition = msg
@@ -120,7 +121,7 @@ class CargoLaunch(object):
 			servo_control_srv = rospy.ServiceProxy('/mavros/cmd/command', CommandLong)
 	
 			msg = CommandLong()
-			resp = servo_control_srv(broadcast=False, command=187, confirmation=False, param1=1, param2=0, param3=0, param4=0, param5=0, param6=0, param7=0)
+			resp = servo_control_srv(broadcast=False, command=187, confirmation=False, param1=-1, param2=-1, param3=0, param4=0, param5=0, param6=0, param7=0)
 	
 			# rospy.loginfo('Try service call...')
 			if resp.success:
@@ -141,7 +142,7 @@ class CargoLaunch(object):
 			servo_control_srv = rospy.ServiceProxy('/mavros/cmd/command', CommandLong)
 	
 			msg = CommandLong()
-			resp = servo_control_srv(broadcast=False, command=187, confirmation=False, param1=0, param2=1, param3=0, param4=0, param5=0, param6=0, param7=0)
+			resp = servo_control_srv(broadcast=False, command=187, confirmation=False, param1=-1, param2=1, param3=0, param4=0, param5=0, param6=0, param7=0)
 	
 			# rospy.loginfo('Try service call...')
 			if resp.success:
@@ -156,16 +157,20 @@ class CargoLaunch(object):
 			return False
 
 	def CARGO_MISSION(self):
-		if not self.servo_block:
+		if not self.servo_init:
+			self.t_init = time.time()
+			self.servo_init = True
+   
+		if not self.servo_block and time.time() - self.t_init > 2:
 			self.t_pwm = time.time()
 			self.servo_block = self.MAV_CMD_DO_SET_ACTUATOR_1()
 		elif self.servo_block:
-			if not self.servo_launch and time.time() - self.t_pwm < 4:
+			if not self.servo_launch and time.time() - self.t_pwm < 2:
 				pass
 			elif not self.servo_launch:
 				self.t_pwm = time.time()
 				self.servo_launch = self.MAV_CMD_DO_SET_ACTUATOR_2()
-			elif time.time() - self.t_pwm < 4:
+			elif time.time() - self.t_pwm < 2:
 				pass
 			else:
 				auto_service.call_drone_command(5)

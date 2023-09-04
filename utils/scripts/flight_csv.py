@@ -31,9 +31,11 @@ class FlightDataRecorder:
 # WPT1-Home : 			0
 
 	def __init__(self):
-		rospy.init_node("flight_data_record")
+		rospy.init_node("flight_csv")
 		self.current_state = State()
 		self.mission = Float32()
+		self.local_pose = PoseStamped()
+		self.destination_cnt = 0
 
 		self.state_sub = rospy.Subscriber("/mavros/state", State, self.state_cb)
 		self.mission_sub = rospy.Subscriber("/mission", Float32, self.mission_cb)
@@ -41,8 +43,9 @@ class FlightDataRecorder:
 		self.local_pose_sub = rospy.Subscriber("/mavros/local_position/pose", PoseStamped, self.local_pose_cb)
 		self.gps_sub = rospy.Subscriber("/mavros/global_position/global", NavSatFix, self.gps_cb)
 		
-		self.DEBUG = True
+		self.DEBUG = False
 		self.datetime = datetime.now()
+		rospy.loginfo("[CSV] Writing...")
 		with open(f"yonsei_drone_flight_log_{self.datetime}.csv", "a") as csv_file:
 			csv_writer = csv.writer(csv_file)
 			csv_writer.writerow(["자동, 수동", "경로점", "GPS Time", "Latitude", "Longitude", "Altitude"])
@@ -59,7 +62,7 @@ class FlightDataRecorder:
 		self.local_pose = msg
 
 	def destination_cnt_cb(self, msg):
-		self.destination_cnt = msg
+		self.destination_cnt = msg.data
   
 	def gps_cb(self, msg):
 		# Avg. rate: 10 Hz
@@ -91,6 +94,7 @@ class FlightDataRecorder:
   
 	def get_event_flag(self, mission_data):
 		# TODO: WPT에 따른 mission_data 필요. 현재는 Avoidance가 모두 1으로 나오고 있음.
+		event_flag = 1
 		# Takeoff Mode
 		if mission_data == 0:
 			event_flag = 1
