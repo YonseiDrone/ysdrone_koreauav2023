@@ -22,3 +22,6 @@
 - [building_search_python_node.py](./scripts/building_search_python_node.py):
 	- PCL 대신 [python-pcl](https://github.com/strawlab/python-pcl)을 사용하여 구현되었으며, c++버전에서 몇 가지 기능이 추가된 노드
 	- Timer 함수 없이 `cloud_cb`에서 주요 기능들이 모두 이루어지고 여기서 publish하는 `/building/search/target_pose`토픽은 control_node에서 에서 받아 제어됨.
+
+### TODO
+- [ ] : python으로 작성된 최신 버전 노드를 cpp로 수정(pointcloud 처리에 c++이 우수하며, 유지보수되고 있는 PCL을 사용해야함)
