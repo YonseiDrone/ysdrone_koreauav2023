@@ -14,6 +14,13 @@ from koreauav_utils import auto_service
 
 
 def to_quaternion(yaw, pitch, roll):
+    '''
+    Function to convert euler angle to quaternian angle.
+    Inputs:
+        yaw 
+        pitch
+        roll
+    '''
     cy = math.cos(yaw * 0.5)
     sy = math.sin(yaw * 0.5)
     cp = math.cos(pitch * 0.5)
@@ -28,7 +35,14 @@ def to_quaternion(yaw, pitch, roll):
 
     return qx, qy, qz, qw
 
+
 class RLControl:
+    '''
+    Class for precisely landing the UAV using reinforcement learning.
+    Training was conducted in the Unity envrionment. And Save the paramters learned in the Unity environment as an onnx file.
+    Algorithms: 
+        Soft Actor-Critc(SAC)
+    '''
     def __init__(self):
         self.current_state = State()
         self.current_pose = PoseStamped()
@@ -50,14 +64,8 @@ class RLControl:
         self.landing_vel_position_pub = rospy.Publisher('/landing_velocity_position', PoseStamped, queue_size=1)
         self.landing_vel_pub = rospy.Publisher("/landing_velocity", PositionTarget, queue_size=1)
 
-        # controller frequency in Hz
-        self.hz = 20.0
-        # Limit the rate in which ROS nodes run
-        self.rate = rospy.Rate(self.hz)
-        self.dt = (1.0 / self.hz)
-
         self.scale = 0.2
-        self.z_offset = 0.1
+        self.z_offset = 0.0
         self.rospack = rospkg.RosPack()
         self.onnxPath = self.rospack.get_path('safety_landing') + '/scripts/DroneLanding-3855533.onnx'
 
@@ -65,7 +73,7 @@ class RLControl:
         onnx.checker.check_model(self.onnx_model)
         self.model = onnxruntime.InferenceSession(self.onnxPath)
         
-        self.yaw = 90*math.pi/180
+        self.yaw = 90*math.pi/180 # desired yaw angle.
         
         # Initialization
         self.relative_dis.data = [0, 0, 0]
@@ -87,6 +95,10 @@ class RLControl:
         self.current_vel = msg
 
     def get_state(self):
+        '''
+        Since the coordinate system used in the Unity and the coordinated system in mavros(ENU) are different,
+        so adjust as below.
+        '''
         state = []
         if len(self.relative_dis.data) >= 3:
             state.append(self.current_vel.twist.linear.y)
@@ -98,6 +110,14 @@ class RLControl:
         return state
 
     def action(self, e):
+        '''
+        1) The value coming from the aurco_VIO node is nan:
+            Position control is performed.
+            It means that aruco marker is not recognized.
+        2) The valuse is "not" nan:
+            Velocity control is performed through RL control.
+            It means that aruco marker is recognized.
+        '''
         if self.mission == 10:
             state = self.get_state()
             if np.isnan(self.relative_dis.data[0]):
@@ -122,7 +142,13 @@ class RLControl:
                 self.landing_velocity.velocity.z = action[2]
                 self.landing_velocity.yaw = self.yaw
                 self.landing_vel_pub.publish(self.landing_velocity)
-            
+
+            '''
+            Function to automatically run a service call. 
+            This function is defined in "koreauav_utils" package, and is executed if ros parameter("/srv_mode") is false in the waypoint_server.launch file.
+            Mission num 11:
+                AutoLanding -> Disarming
+            '''           
             if self.current_pose.pose.position.z < 0.5:
                 auto_service.call_drone_command(11)
 
