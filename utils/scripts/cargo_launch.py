@@ -10,20 +10,8 @@ from koreauav_utils import auto_service
 		
 
 ### https://mavlink.io/en/messages/common.html  
- 
-# MAV_CMD_DO_SET_SERVO (183 )
-# Set a servo to a desired PWM value.
 
-# Param (:Label)	Description	Values		Units
-# 1: Instance		Servo instance number.	min:0 increment:1	
-# 2: PWM			Pulse Width Modulation.	min:0 increment:1	us
-# 3	Empty		
-# 4	Empty		
-# 5	Empty		
-# 6	Empty		
-# 7	Empty		
-
-# MAV_CMD_DO_SET_ACTUATOR (187 )
+# MAV_CMD_DO_SET_ACTUATOR (187)
 # Sets actuators (e.g. servos) to a desired value. The actuator numbers are mapped to specific outputs (e.g. on any MAIN or AUX PWM or UAVCAN) using a flight-stack specific mechanism (i.e. a parameter).
 
 # Param (:Label)	Description																Values
@@ -35,7 +23,7 @@ from koreauav_utils import auto_service
 # 6: Actuator 6		Actuator 6 value, scaled from [-1 to 1]. NaN to ignore.					min: -1 max:1
 # 7: Index			Index of actuator set (i.e if set to 1, Actuator 1 becomes Actuator 7)	min:0 increment:1
 
-# MAV_CMD_DO_GRIPPER (211 )
+# MAV_CMD_DO_GRIPPER (211)
 # Mission command to operate a gripper.
 
 # Param (:Label)	Description	Values
@@ -71,6 +59,7 @@ class CargoLaunch(object):
 		self.t_pwm = time.time()
 		self.DEBUG = False
 
+	### Callback functions
 	def launch_setposition_cb(self, msg):
 		self.launch_setposition = msg
 		self.launch_setposition_list.append([msg.pose.position.x, msg.pose.position.y, msg.pose.position.z, msg.pose.orientation.x, msg.pose.orientation.y, msg.pose.orientation.z, msg.pose.orientation.w])
@@ -85,9 +74,11 @@ class CargoLaunch(object):
 
 	def pose_cb(self, msg):
 		self.current_pose = msg
+  
 	def mission_cb(self, msg):
 		self.mission = msg.data
 	
+	### Math functions
 	def calc_xy_err(self, cur, dest):
 		xy_err = math.sqrt((cur.pose.position.x - dest.pose.position.x)**2 + (cur.pose.position.y - dest.pose.position.y)**2)
 		return xy_err
@@ -96,6 +87,7 @@ class CargoLaunch(object):
 		z_err = math.sqrt((cur.pose.position.z - dest.pose.position.z)**2)
 		return z_err
 	
+	# Main function
 	def move_to_target(self, e):
 		if self.mission == 4:
 			self.move.pose.position.x = self.launch_setposition_list[-1][0]
@@ -113,7 +105,8 @@ class CargoLaunch(object):
 		if(self.DEBUG):
 			self.CARGO_MISSION()
        
-
+	# Servo 1 (Open)
+	# Note: param1 & param2 == -1 (Check QGC pwm values)
 	def MAV_CMD_DO_SET_ACTUATOR_1(self):
 		# rospy.loginfo('Waiting for server...')
 		rospy.wait_for_service('/mavros/cmd/command')
@@ -134,7 +127,10 @@ class CargoLaunch(object):
 		except rospy.ServiceException as e:
 			print("Service call failed: %s" % e)
 			return False
-	
+ 
+
+	# Servo 2 (Activate)
+	# Note: param2 == 1
 	def MAV_CMD_DO_SET_ACTUATOR_2(self):
 		# rospy.loginfo('Waiting for server...')
 		rospy.wait_for_service('/mavros/cmd/command')
@@ -175,28 +171,7 @@ class CargoLaunch(object):
 			else:
 				auto_service.call_drone_command(5)
 		else:
-			rospy.logwarn("Servo Error")	
-
-		
-
-	# def MAV_CMD_DO_SET_ACTUATOR(self, param_1, param_2):
-	# 	rospy.loginfo('Waiting for server...')
-	# 	rospy.wait_for_service('/mavros/cmd/command')
-	# 	try:
-	# 		servo_control_srv = rospy.ServiceProxy('/mavros/cmd/command', CommandLong)
-	
-	# 		msg = CommandLong()
-	# 		resp = servo_control_srv(broadcast=False, command=187, confirmation=False, param1=param_1, param2=param_2, param3=0, param4=0, param5=1, param6=1, param7=0)
-	
-	# 		rospy.loginfo('Try service call...')
-	# 		if resp.success:
-	# 			print("Servo controlled successfully")
-	# 			print(f"result: {resp.result}")
-	# 		else:
-	# 			print("Failed to control servo")
-
-	# 	except rospy.ServiceException as e:
-	# 		print("Service call failed: %s" % e)
+			rospy.logwarn("Servo Error")
 
 
 if __name__ == "__main__":
@@ -210,6 +185,7 @@ if __name__ == "__main__":
 			rate.sleep()
 		rospy.loginfo(f"Cargo Launch Node : FCU connected")
 
+		# move_to_target() 함수를 주어진 주기마다 호출
 		rospy.Timer(rospy.Duration(0.05), cargo_launch_node_handler.move_to_target)
 		rospy.spin()
 	except rospy.ROSInitException as exception:

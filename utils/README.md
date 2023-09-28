@@ -12,16 +12,16 @@
 ### Scripts
 
 - [cargo_launch.py](./scripts/cargo_launch.py):
-	>		Pixhawk FC에 PWM 시그널을 보내 서보모터를 제어하기 위한 노드인 `cargo_launch`를 README에서 추가 설명함.
-	>		PX4 공식 문서나 `mavros`에서 소개되는 Actuator는 주로 BLDC 모터를 지칭하는데 혼동되기 쉬워 적절한 토픽이나 서비스를 사용하지 못함.
-	>		서보모터를 제어할 때는 `GRIPPER`를 사용하는 방식으로 사용하지만 공식 문서에서도 테스트 되었다고 나오진 않음.
-	>		따라서 아래와 같은 Reference들을 참고하여 코드를 작성하면 된다.
-	>
-	*Refernces*
-	- [Ardupilot 문서: Servo Gripper](https://ardupilot.org/copter/docs/common-gripper-servo.html#servo-gripper)
-	- [PX4 문서: Grippers](https://docs.px4.io/main/en/peripherals/gripper.html)
-	- [MAVLink: MAV_CMD_DO_GRIPPER](https://mavlink.io/en/messages/common.html#MAV_CMD_DO_GRIPPER)
-	- [사용하는 메세지: CommandLong](http://docs.ros.org/en/noetic/api/mavros_msgs/html/srv/CommandLong.html)
+	- Pixhawk FC에 PWM 시그널을 보내 서보모터를 제어하기 위한 노드
+	- 대회에서 사용한 펌웨어 버전에서는 `MAV_CMD_DO_SET_ACTUATOR`를 지원.
+	- [Servo Motor Parameters(YonseiDrone Notion)](https://www.notion.so/yonseidrone/Servo-Motor-Parameters-568f174a024c45d58006834091d93794?pvs=4)
+	- v1.14 부터는 `GRIPPER`를 사용하는 방식으로 바뀌므로, 추후 업데이트 시 참고.
+	- 아래와 같은 Reference들을 참고하여 코드를 작성하면 된다.
+	- *Refernces*
+		- [Ardupilot 문서: Servo Gripper](https://ardupilot.org/copter/docs/common-gripper-servo.html#servo-gripper)
+		- [PX4 문서: Grippers](https://docs.px4.io/main/en/peripherals/gripper.html)
+		- [MAVLink: MAV_CMD_DO_GRIPPER](https://mavlink.io/en/messages/common.html#MAV_CMD_DO_GRIPPER)
+		- [사용하는 메세지: CommandLong](http://docs.ros.org/en/noetic/api/mavros_msgs/html/srv/CommandLong.html)
 
 - [fligt_csv.py](./scripts/flight_csv.py): 23년 한국 항공기 경연대회 제출 CSV 파일을 자동으로 작성
 
