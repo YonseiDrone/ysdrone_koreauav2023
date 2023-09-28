@@ -12,6 +12,7 @@ import pcl
 import numpy as np
 from koreauav_utils import auto_service
 
+### Util functions
 def to_quaternion(yaw, pitch, roll):
     cy = math.cos(yaw * 0.5)
     sy = math.sin(yaw * 0.5)
@@ -47,6 +48,7 @@ def to_euler_angles(x, y, z, w):
 
     return angles_roll, angles_pitch, angles_yaw
 
+### Class
 class BuildingSearch(object):
     def __init__(self):
         self.flag = 0
@@ -94,7 +96,7 @@ class BuildingSearch(object):
         cloud_msg = pc2.create_cloud_xyz32(header, points)
         self.cluster_visual_pub.publish(cloud_msg)
 
-
+    ## Callback functions
     def imu_cb(self, msg):
         self.imu = msg
 
@@ -117,6 +119,7 @@ class BuildingSearch(object):
         cloud = pcl.PointCloud()
         cloud.from_list(points_list)
         if self.mission in [2,3]:
+            ### Find the centroid of clustered object and Append to the 'building_centroid' list
             if cloud.size > 0:
                 tree = cloud.make_kdtree()
                 ec = cloud.make_EuclideanClusterExtraction()
@@ -150,23 +153,24 @@ class BuildingSearch(object):
             else:
                 rospy.logwarn("Empty input cloud!")
 
+            ### Since there are too many noises...
             if len(self.building_centroid) < self.building_search_count:
                 
                 if self.flag == 0:
                     _, _, self.current_angle = to_euler_angles(self.current_pose.pose.orientation.x, self.current_pose.pose.orientation.y, self.current_pose.pose.orientation.z, self.current_pose.pose.orientation.w)
                     self.flag += 1
                 
+                ### Navigate in a circle from the WPT#3
                 self.target_pose.pose.position.x = self.current_pose.pose.position.x + 0.5 * (self.last_goal_x + self.radius * math.cos(self.current_angle) - self.current_pose.pose.position.x)
                 self.target_pose.pose.position.y = self.current_pose.pose.position.y + 0.5 * (self.last_goal_y + self.radius * math.sin(self.current_angle) - self.current_pose.pose.position.y)
                 self.target_pose.pose.position.z = self.search_height
-                # roll, pitch, yaw = to_euler_angles(self.imu.orientation.x, self.imu.orientation.y, self.imu.orientation.z, self.imu.orientation.w)
-                # target_yaw = yaw + 0.1
-                # qx, qy, qz, qw = to_quaternion(target_yaw, pitch, roll)
+                
                 qx, qy, qz, qw = to_quaternion(self.current_angle, 0, 0)
                 self.target_pose.pose.orientation.x = qx
                 self.target_pose.pose.orientation.y = qy
                 self.target_pose.pose.orientation.z = qz
                 self.target_pose.pose.orientation.w = qw
+                
                 self.target_pose_pub.publish(self.target_pose)
 
                 self.current_angle += self.speed
@@ -175,6 +179,7 @@ class BuildingSearch(object):
                 self.target_pose.pose.position.x = self.last_goal_x + self.radius * math.cos(self.current_angle)
                 self.target_pose.pose.position.y = self.last_goal_y + self.radius * math.sin(self.current_angle)
                 self.target_pose.pose.position.z = self.search_height
+                
                 error_yaw = math.atan2(self.pointcloud_centroid[1]-self.current_pose.pose.position.y, self.pointcloud_centroid[0]-self.current_pose.pose.position.x)
                 qz = math.sin(error_yaw/2.0)
                 qw = math.cos(error_yaw/2.0)
@@ -182,12 +187,15 @@ class BuildingSearch(object):
                 self.target_pose.pose.orientation.y = 0
                 self.target_pose.pose.orientation.z = qz
                 self.target_pose.pose.orientation.w = qw
+                
                 self.target_pose_pub.publish(self.target_pose)
 
+            ### After collecting enough points, control the heading to the target
             else:
                 self.target_pose.pose.position.x = self.last_goal_x
                 self.target_pose.pose.position.y = self.last_goal_y
                 self.target_pose.pose.position.z = self.search_height
+                
                 error_yaw = math.atan2(self.pointcloud_centroid[1]-self.current_pose.pose.position.y, self.pointcloud_centroid[0]-self.current_pose.pose.position.x)
                 qz = math.sin(error_yaw/2.0)
                 qw = math.cos(error_yaw/2.0)
@@ -195,13 +203,13 @@ class BuildingSearch(object):
                 self.target_pose.pose.orientation.y = 0
                 self.target_pose.pose.orientation.z = qz
                 self.target_pose.pose.orientation.w = qw
+                
                 self.target_pose_pub.publish(self.target_pose)
 
-                centroid = np.mean(np.array(self.building_centroid[-29:]), axis=0)
+                centroid = np.mean(np.array(self.building_centroid[-29:]), axis=0)  # Assume that some points are noisy, use the most recent centroid points
                 self.centroid.pose.position.x = centroid[0]
                 self.centroid.pose.position.y = centroid[1]
                 self.centroid.pose.position.z = centroid[2]
-                #rospy.loginfo(f"centroid: {self.centroid}")
                 self.centroid_pub.publish(self.centroid)
 
                 if len(self.building_centroid) == self.building_search_count+self.building_stack_count+10:

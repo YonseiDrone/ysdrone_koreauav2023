@@ -331,23 +331,3 @@ void BuildingSearch::move_to_target(double x, double y, double z)
     }
     ROS_INFO("Move to target Done!");
 }
-
-// bool BuildingSearch::call_drone_command(const double& data) {
-//     srv.request.command = data;
-
-//     if (client.call(srv)) {
-//         return true;    // The service call was successful
-//     } else {
-//         ROS_ERROR("Failed to call service drone_command");
-//         return false;   // The service call failed
-//     }
-// }
-
-// bool BuildingSearch::srv_cb(ysdrone_msgs::DroneCommand::Request &req, ysdrone_msgs::DroneCommand::Response &res)
-// {
-//     // DroneCommand command
-//     mission = req.command;
-//     ROS_INFO("[Building Search] Mission set to %d", mission);
-//     return true;
-// }
-
