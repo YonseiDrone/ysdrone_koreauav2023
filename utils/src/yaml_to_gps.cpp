@@ -8,6 +8,7 @@ int main(int argc, char** argv) {
     ros::init(argc, argv, "yaml_to_gps");
     ros::NodeHandle nh;
 
+    // YAML파일에서 WPT_1, WPT_2, WPT_3 param을 가져옴
     XmlRpc::XmlRpcValue WPT_1, WPT_2, WPT_3;
     nh.getParam("WPT_1", WPT_1);
     nh.getParam("WPT_2", WPT_2);
