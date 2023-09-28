@@ -12,6 +12,13 @@ from std_msgs.msg import Float32MultiArray, Float32
 from koreauav_utils import auto_service
 
 def to_quaternion(yaw, pitch, roll):
+    '''
+    Function to convert euler angle to quaternian angle.
+    Inputs:
+        yaw 
+        pitch
+        roll
+    '''
     cy = math.cos(yaw * 0.5)
     sy = math.sin(yaw * 0.5)
     cp = math.cos(pitch * 0.5)
@@ -27,6 +34,9 @@ def to_quaternion(yaw, pitch, roll):
     return qx, qy, qz, qw
 
 class PID:
+    '''
+    Class for PID control
+    '''
     def __init__(self, kp=1, kd=0, ki=0, dt=0.01):
 
         # Gains
@@ -57,12 +67,15 @@ class PID:
         return pid
 
 class PIDControl:
+    '''
+    Class to precisely land the UAV on the aruco marker using PID control.
+    Velocity control based distance calculated in "aruco_VIO" node.
+    Only x and y are controlled through PID control, and the spped in the z direction was limited to a constant speed.
+    '''
     def __init__(self):
         self.current_state = State()
         self.current_pose = PoseStamped()
         self.relative_dis = Float32MultiArray()
-        self.landing_velocity = Twist()
-        self.tolerance_position = 0.01
         self.desired_landing_position = PoseStamped()
         self.desired_landing = PositionTarget()
         self.mission = 0
@@ -101,7 +114,6 @@ class PIDControl:
 
     def relative_dis_cb(self, msg):
         self.relative_dis = msg
-        #rospy.loginfo(f"{self.relative_dis.data[0]}, {self.relative_dis.data[1]}, {self.relative_dis.data[2]}")
 
     def state_cb(self, msg):
         self.current_state = msg
@@ -114,6 +126,14 @@ class PIDControl:
      
 
     def safety_landing(self, e):
+        '''
+        1) The value coming from the aurco_VIO node is nan:
+            Position control is performed.
+            It means that aruco marker is not recognized.
+        2) The valuse is "not" nan:
+            Velocity control is performed through PID control.
+            It means that aruco marker is recognized.
+        '''
         if self.mission == 6:
             if np.isnan(self.relative_dis.data[0]):
                 qx, qy, qz, qw = to_quaternion(self.yaw, 0, 0)
@@ -126,7 +146,6 @@ class PIDControl:
                 self.desired_landing_position.pose.orientation.w = qw
                 self.desired_landing_position_pub.publish(self.desired_landing_position)
             else:
-                #rospy.loginfo("HERE")
                 err_x = self.relative_dis.data[0] - 0
                 err_y = self.relative_dis.data[1] - 0
                 err_z = self.relative_dis.data[2] - 0
@@ -143,6 +162,12 @@ class PIDControl:
 
                 self.desired_landing_pub.publish(self.desired_landing)
             
+            '''
+            Function to automatically run a service call. 
+            This function is defined in "koreauav_utils" package, and is executed if ros parameter("/srv_mode") is false in the waypoint_server.launch file.
+            Mission num 11:
+                AutoLanding -> Disarming
+            '''
             if self.current_pose.pose.position.z < 0.3:
                 auto_service.call_drone_command(11)
 

@@ -20,7 +20,11 @@ from cv_bridge import CvBridge, CvBridgeError
 from mavros_msgs.msg import State
 from geometry_msgs.msg import PoseStamped, Point
 
+
 def get_usb_device():
+    '''
+    Function to fix the device number on the USB camera
+    '''
 # https://stackoverflow.com/questions/35821763/create-opencv-videocapture-from-interface-name-instead-of-camera-numbers
     DEFAULT_CAMERA_NAME = '/dev/v4l/by-path/platform-xhci-hcd.0.auto-usb-0:1.2:1.0-video-index0'
     device_index = None
@@ -35,51 +39,19 @@ def get_usb_device():
     
     return device_index
 
-def to_quaternion(yaw, pitch, roll):
-    cy = math.cos(yaw * 0.5)
-    sy = math.sin(yaw * 0.5)
-    cp = math.cos(pitch * 0.5)
-    sp = math.sin(pitch * 0.5)
-    cr = math.cos(roll * 0.5)
-    sr = math.sin(roll * 0.5)
-
-    qx = sr*cp*cy - cr*sp*sy
-    qy = cr*sp*cy + sr*cp*sy
-    qz = cr*cp*sy - sr*sp*cy
-    qw = cr*cp*cy + sr*sp*sy
-
-    return qx, qy, qz, qw
-
-def to_euler_angles(x, y, z, w):
-    # roll(x-axis rotation)
-    sinr_cosp = 2 * (w*x + y*z)
-    cosr_cosp = 1 - 2*(x*x + y*y)
-    angles_roll = math.atan2(sinr_cosp, cosr_cosp)
-
-    # pitch(y-axis rotation)
-    sinp = 2*(w*y - z*x)
-    if abs(sinp) >= 1:
-        angles_pitch = math.copysign(math.pi/2, sinp) # use 90 degrees if out of range
-    else:
-        angles_pitch = math.asin(sinp)
-    
-    # yaw(z-axis rotation)
-    siny_cosp = 2*(w*z + x*y)
-    cosy_cosp = 1 - 2*(y*y + z*z)
-    angles_yaw = math.atan2(siny_cosp, cosy_cosp)
-
-    return angles_roll, angles_pitch, angles_yaw
 
 
 class KalmanFilter(object):
     def __init__(self, dt, u_x, u_y, std_acc, x_std_meas, y_std_meas):
         """
-        dt : sampling time(time for 1 cycle)
-        u_x : acceleration in x-direction
-        u_y : acceleration in y-direction
-        std_acc : process noise magnitude
-        x_std_meas : standard deviation of the measurement in x-direction
-        y_std_meas : standard deviation of the measurement in y-direction
+        Linear kalman filter to reduce camera sensor noise.
+        Inputs:
+            dt : sampling time(time for 1 cycle)
+            u_x : acceleration in x-direction
+            u_y : acceleration in y-direction
+            std_acc : process noise magnitude
+            x_std_meas : standard deviation of the measurement in x-direction
+            y_std_meas : standard deviation of the measurement in y-direction
         """
         # Define sampling time
         self.dt = dt
@@ -146,6 +118,10 @@ class KalmanFilter(object):
 
 
 class ImageToDistance:
+    '''
+    A class to determine the current position of the UAV based on the ENU coordinated system. 
+    The output is the position of UAV based on the aruco marker with a casade structure. In this case, three aruco markers of different sizes were used.
+    '''
 
     def __init__(self):
         self.current_state = State()
@@ -175,7 +151,6 @@ class ImageToDistance:
 
         # cameraMatrix and distortion coefficents
         # Camera intrinsic matrix [[f_x, 0, c_x], [0, f_y, c_y], [0, 0, 1]]
-        # self.cameraMatrix = np.array([[1059.899814, 0. , 640.0], [ 0.0 , 1059.899814, 360.0], [0.0 , 0.0 , 1.0]])
         self.cameraMatrix = np.array([[1075.150341, 0. , 640.0], [ 0.0 , 1075.150341, 360.0], [0.0 , 0.0 , 1.0]])
         self.distortion = np.array([[0.176173, -0.394370, -0.003991, 0.005109]])
         
@@ -191,11 +166,14 @@ class ImageToDistance:
         self.inner_objp = np.array([[0, 0, 0], [0, self.inner_marker_size, 0], [self.inner_marker_size, self.inner_marker_size, 0], [self.inner_marker_size, 0, 0]], dtype=np.float32)
         self.mid_objp = np.array([[0, 0, 0], [0, self.mid_marker_size, 0], [self.mid_marker_size, self.mid_marker_size, 0], [self.mid_marker_size, 0, 0]], dtype=np.float32)
         self.outer_objp = np.array([[0, 0, 0], [0, self.outer_marker_size, 0], [self.outer_marker_size, self.outer_marker_size, 0], [self.outer_marker_size, 0, 0]], dtype=np.float32)
-        #========================================================================================================
+        
+        # Fix USB camera number
         device_index = get_usb_device()
         if device_index is None:
             rospy.logwarn("Get device failed!")
         self.cap = cv2.VideoCapture(device_index)
+
+        # Resolution(1280x720) fixed because camera calibration was performed at 1280x720 resolution.
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
         self.cap.set(cv2.CAP_PROP_EXPOSURE, -10)
@@ -217,6 +195,10 @@ class ImageToDistance:
         ret, cv_image = self.cap.read()
         height, width, _ = cv_image.shape
 
+        '''
+        This class is used to determine the distance from the aruco marekr to the UAV,
+        but there are two ways(PID or RL) to control the UAV from the obtained distance, so it works with two mission(6, 10) numbers.
+        '''
         if self.mission in [6, 10]:
             # convert the image
             cv_image_gray = cv2.cvtColor(cv_image, cv2.COLOR_BGR2GRAY)
@@ -230,7 +212,10 @@ class ImageToDistance:
             inner_corners = None
             mid_corners = None
             outer_corners = None
-            
+
+            '''
+            Detect all recognized aruco marker IDs.
+            '''
             if np.all(ids != None):
                 rospy.loginfo(f"AruCo Marker # {ids.size}")
                 # We have cascade AruCo outer_id: 19 mid_id: 1 inner_id: 0
@@ -247,6 +232,11 @@ class ImageToDistance:
                         inner_corners = corners[i]
                         
                 rospy.loginfo(f"AruCo Marker ID inner_id: {inner_id}, mid_id: {mid_id} outer_id: {outer_id}")
+
+            '''
+            The code structure below determines the distance based on the inner if it is recognized.
+            However, if the distance is large and the outer, larger size is recognized instead of the inner, the distance is judged based on that.
+            '''
                 
             if inner_id is not None:
                 tmp_corner = inner_corners[0]
@@ -268,6 +258,10 @@ class ImageToDistance:
                 self.dis.data = (float('nan'), float('nan'), float('nan'))
                 self.distance_pub.publish(self.dis)
 
+            '''
+            Calculate the distance to the UAV using the recognized aruco marker.
+            In this process, the kalman filter is used to reduce sensor noise.
+            '''
             if(corners):
                 # detect marker
                 aruco.drawDetectedMarkers(cv_image, corners)
@@ -304,21 +298,22 @@ class ImageToDistance:
                 cv2.putText(cv_image, "Predicted Position", (int(x_predict + 30), int(y_predict)), 0, 0.5, (255, 0, 0), 2)
                 cv2.putText(cv_image, "Measured Position", (int(x_center_px + 30), int(y_center_px - 30)), 0, 0.5, (0,191,255), 2)
 
-
-                #=========================Camera coordinate============================
                 # Initialize camera_coord in pixels
-                #===================KALMAN================================
                 camera_coord = np.array([[x_update[0]], [y_update[0]], [1]])
-                #camera_coord = np.array([[x_center_px], [y_center_px], [1]])
-                #=========================================================
+
                 # Perform matrix inversion and multiplication
                 camera_coord = np.linalg.inv(self.cameraMatrix).dot(camera_coord)
+
                 # Multiply with z_world to get the coordinates in units of z_world
                 camera_coord *= tvec[2][0]
 
                 camera_coord = np.array([camera_coord[0][0], camera_coord[1][0], camera_coord[2][0], 1])
                 #rospy.loginfo(f"camera_coord: {camera_coord}")
 
+                '''
+                In our case, to simplify the coordinate transformation process, UAV will land with the yaw direction fixed at 90 degrees during whole landing process.
+                Therefore, in this process, set x,y and z as below to match the camera coordinate systemd and the ENU coordinate system.
+                '''
                 x = -camera_coord[0]
                 y = camera_coord[1]
                 z = camera_coord[2]
@@ -332,9 +327,6 @@ class ImageToDistance:
         # Node publish - cv_image
         cv_image = cv2.cvtColor(cv_image, cv2.COLOR_BGR2RGB)
         self.image_pub.publish(self.bridge.cv2_to_imgmsg(cv_image, "rgb8"))
-        # cv_image = cv2.cvtColor(cv_image, cv2.COLOR_BGR2RGB)
-        # cv2.imshow("cv_image", cv_image)
-        # cv2.waitKey(5)
 
 if __name__ == "__main__":
     rospy.init_node('aruco_VIO', anonymous=True)
