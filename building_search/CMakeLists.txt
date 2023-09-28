@@ -110,7 +110,7 @@ find_package(PCL REQUIRED)
 catkin_package(
 #  INCLUDE_DIRS include
 #  LIBRARIES building_search
-#  CATKIN_DEPENDS geometry_msgs pcl sensor_msgs tf tf2 visualization_msgs
+  CATKIN_DEPENDS geometry_msgs pcl sensor_msgs tf tf2 visualization_msgs ysdrone_msgs
 #  DEPENDS system_lib
 )
 
