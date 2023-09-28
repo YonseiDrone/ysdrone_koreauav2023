@@ -29,7 +29,7 @@
 - [auto_service.py](./src/koreauav_utils/auto_service.py): 다음 미션으로 넘어가는 위해 사용하는 서비스 `/drone_command`를 여러 패키지에서 사용하기 위한 스크립트
 
 ### TODO
-- [ ]: [flight_csv_reader.py](./scripts/flight_csv_rmse.py)
+- [ ] : [flight_csv_reader.py](./scripts/flight_csv_rmse.py)
 			작성된 제출용 csv 파일을 체크하는 파일. 경로점에 따른 색상은 잘 나오지만 수평, 수직 오차와 RMSE가 부정확
-- [ ]: [flight_csv_rmse.py](./scripts/flight_csv_rmse.py)
-			RMSE만 측정하는 스크립트. 경로점 번호가 출발~복귀마다 상이해서 이착륙 시 번호 제외가 부정확함.
+- [ ] : [flight_csv_rmse.py](./scripts/flight_csv_rmse.py)
+			RMSE만 측정하는 스크립트. 경로점 번호가 출발~복귀마다 상이해서 이착륙 시에는 RMSE 측정 제외하는 것이 부정확함.
