@@ -21,27 +21,6 @@ from koreauav_utils import auto_service
 from sklearn.decomposition import PCA
 from scipy.stats import zscore
 
-def to_euler_angles(x, y, z, w):
-    # roll(x-axis rotation)
-    sinr_cosp = 2 * (w * x + y * z)
-    cosr_cosp = 1 - 2 * (x * x + y * y)
-    angles_roll = math.atan2(sinr_cosp, cosr_cosp)
-
-    # pitch(y-axis rotation)
-    sinp = 2 * (w * y - z * x)
-    if abs(sinp) >= 1:
-        angles_pitch = math.copysign(math.pi / 2, sinp) # use 90 degrees if out of range
-    else:
-        angles_pitch = math.asin(sinp)
-    
-    # yaw(z-axis rotation)
-    siny_cosp = 2 * (w * z + x * y)
-    cosy_cosp = 1 - 2 * (y * y + z * z)
-    angles_yaw = math.atan2(siny_cosp, cosy_cosp)
-
-    return angles_roll, angles_pitch, angles_yaw
-
-
 class MarkerDetection(object):
     def __init__(self):
         self.last_detection_time = time.time()
@@ -154,6 +133,26 @@ class MarkerDetection(object):
     def pose_cb(self, msg):
         self.current_pose = msg
 
+    def to_euler_angles(self, x, y, z, w):
+        # roll(x-axis rotation)
+        sinr_cosp = 2 * (w * x + y * z)
+        cosr_cosp = 1 - 2 * (x * x + y * y)
+        angles_roll = math.atan2(sinr_cosp, cosr_cosp)
+
+        # pitch(y-axis rotation)
+        sinp = 2 * (w * y - z * x)
+        if abs(sinp) >= 1:
+            angles_pitch = math.copysign(math.pi / 2, sinp) # use 90 degrees if out of range
+        else:
+            angles_pitch = math.asin(sinp)
+        
+        # yaw(z-axis rotation)
+        siny_cosp = 2 * (w * z + x * y)
+        cosy_cosp = 1 - 2 * (y * y + z * z)
+        angles_yaw = math.atan2(siny_cosp, cosy_cosp)
+
+        return angles_roll, angles_pitch, angles_yaw
+
     def log_matrices(self, cross_pos_3d, other_pos_3d, drone_pos_3d, setpoint, id=0):
         np.save(self.logd + f'/cross_pos_3d_{id}.npy', cross_pos_3d)
         np.save(self.logd + f'/other_pos_3d_{id}.npy', other_pos_3d)
@@ -174,7 +173,6 @@ class MarkerDetection(object):
         marker.color.g = color[1]
         marker.color.b = color[2]
         marker.pose.position = Point(pos[0], pos[1], pos[2])
-
         return marker
 
     def make_line_marker(self, pos, radius):
@@ -216,7 +214,7 @@ class MarkerDetection(object):
                                 [ 0.00000000e+00,  0.00000000e+00,  0.00000000e+00,  1.00000000e+00]])
         flu_coords = np.dot(camera_to_flu, camera_coords)
         #======================FLU to ENU==========================================================================
-        roll, pitch, yaw = to_euler_angles(self.imu.orientation.x, self.imu.orientation.y, self.imu.orientation.z, self.imu.orientation.w)
+        roll, pitch, yaw = self.to_euler_angles(self.imu.orientation.x, self.imu.orientation.y, self.imu.orientation.z, self.imu.orientation.w)
         enu_yaw = np.array([[np.cos(yaw), -np.sin(yaw), 0], [np.sin(yaw), np.cos(yaw), 0], [0, 0, 1]])
         enu_roll = np.array([[1, 0, 0], [0, np.cos(roll), -np.sin(roll)], [0, np.sin(roll), np.cos(roll)]])
         enu_pitch = np.array([[np.cos(pitch), 0, np.sin(pitch)], [0, 1, 0], [-np.sin(pitch), 0, np.cos(pitch)]])
@@ -243,7 +241,7 @@ class MarkerDetection(object):
         enu_coord[1] = position[1] - self.current_pose.pose.position.y
         enu_coord[2] = position[2] - self.current_pose.pose.position.z
         #==================================ENU to FLU coordinate(east-north-up)=======================================
-        _, _, yaw = to_euler_angles(self.imu.orientation.x, self.imu.orientation.y, self.imu.orientation.z, self.imu.orientation.w)
+        _, _, yaw = self.to_euler_angles(self.imu.orientation.x, self.imu.orientation.y, self.imu.orientation.z, self.imu.orientation.w)
         yaw *= -1
         enu_rotation = np.array([[np.cos(yaw), -np.sin(yaw), 0], [np.sin(yaw), np.cos(yaw), 0], [0, 0, 1]])
         enu_translation = np.array([0, 0, 0])
