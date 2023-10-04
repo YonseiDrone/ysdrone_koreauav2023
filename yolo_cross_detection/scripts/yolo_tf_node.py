@@ -48,17 +48,22 @@ class MarkerDetection(object):
     def __init__(self):
         self.last_detection_time = time.time()
         self.rospack = rospkg.RosPack()
+
         self.yoloPath = self.rospack.get_path('yolo_cross_detection') + '/yolov5'
         self.weightPath = self.rospack.get_path('yolo_cross_detection') + '/weight/yolov5nV4.onnx'
         self.model = torch.hub.load(self.yoloPath, 'custom', self.weightPath, source='local', force_reload=True)
         self.model.iou = 0.5
+
         self.mission = 0
         self.mission_rep = ""
+
         self.setpoint_list = []
         self.crosspos_list = []
         self.dronepos_list = []
+
         self.counter = 0
         self.id = 0
+
         self.ransac = RANSACRegressor(residual_threshold=3.5)
         self.pca = PCA(n_components=2)
         self.intrinsic_matrix = np.array([[385.7627868652344, 0.0, 331.9479064941406],
@@ -85,7 +90,6 @@ class MarkerDetection(object):
         self.centroid_list = []
 
         # Subscriber
-        ## RealSense Topics
         self.rgb_image_sub = message_filters.Subscriber('/camera/color/image_raw', Image)
         self.depth_image_sub = message_filters.Subscriber('/camera/aligned_depth_to_color/image_raw', Image)
         self.state_sub = rospy.Subscriber('/mavros/state', State, self.state_cb)
@@ -130,7 +134,6 @@ class MarkerDetection(object):
         self.centroid = np.array([x,y,z])
         marker = self.make_cube_marker(self.centroid, (0, 255, 0), 0.6)
         self.centroid_pub.publish(marker)
-        #rospy.loginfo(f"building centroid: {self.centroid}")
 
     def visualize(self):
         self.setpoint_list = np.array(self.setpoint_list)
@@ -258,7 +261,6 @@ class MarkerDetection(object):
         image_coordinates = np.dot(self.intrinsic_matrix, cam_coord)
         u = image_coordinates[0] / image_coordinates[2]
         v = image_coordinates[1] / image_coordinates[2]
-        #rospy.loginfo(f"image_coordinate: {image_coordinates}")
 
         return [int(u), int(v)]
     
@@ -278,6 +280,8 @@ class MarkerDetection(object):
         points = np.array(other_pos)
         mean_point = np.mean(points, axis=0)
         centered_points = points - mean_point
+
+        # Various Methods to Calculate the Normal Vector...
         # ============SVD(Singular Value Decomposition)=========
         # _, _, vh = svd(centered_points)
         # normal_vector = vh[-1]
@@ -308,16 +312,14 @@ class MarkerDetection(object):
         else:
             param = self.pca.fit(points).components_
             normal_vector = np.array([param[-1][0], param[-1][1], 0])
-            #=======================================================
             cross_drone_vec = cross_pos - drone_pos
 
             if np.dot(normal_vector, cross_drone_vec) > 0:
                 normal_vector = -normal_vector
             # drone setpoint
-            return cross_pos + normal_vector / np.linalg.norm(normal_vector) * offset * offset / (depth_mean if depth_mean < offset else offset)#(offset + (offset - depth_mean)*0.3)
+            return cross_pos + normal_vector / np.linalg.norm(normal_vector) * offset * offset / (depth_mean if depth_mean < offset else offset)
 
     def make_cube_marker(self, pos, color, scale):
-        #visualize
         marker = Marker()
         marker.type = Marker.CUBE
         marker.header.frame_id = 'local_origin'
@@ -404,9 +406,6 @@ class MarkerDetection(object):
                     current_angle = error_yaw + math.pi
                     qz = math.sin(error_yaw/2.0)
                     qw = math.cos(error_yaw/2.0)
-
-                    # if len(self.crosspos_list) == self.yolo_search_count-4:
-                    #     self.circular_speed *= -1
 
                     self.target_pose.pose.position.x = self.current_pose.pose.position.x + (self.centroid[0] + self.radius*math.cos(current_angle + self.circular_speed) - self.current_pose.pose.position.x)*0.4
                     self.target_pose.pose.position.y = self.current_pose.pose.position.y + (self.centroid[1] + self.radius*math.sin(current_angle + self.circular_speed) - self.current_pose.pose.position.y)*0.4
