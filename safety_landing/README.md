@@ -2,7 +2,7 @@
 
 - safety_landing package는 3개의 노드로 구성.
 - [aruco_VIO](./scripts/aruco_VIO.py) + ([PID_control_node](./scripts/PID_control_node.py) or [RL_aruco_control_node](./scripts/RL_aruco_control_node.py))로 사용.
-- control node에서 계산된 값은 offboard 패키지의 [control_node](././offboard/scripts/control_node.py) node로 전송.
+- control node에서 계산된 값은 offboard 패키지의 [control_node](../offboard/scripts/control_node.py) node로 전송.
 
 ## "aruco_VIO" node
 
