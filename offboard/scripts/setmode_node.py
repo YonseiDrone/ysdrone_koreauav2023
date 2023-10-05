@@ -18,7 +18,7 @@ class SetmodeClass(object):
         self.state_sub = rospy.Subscriber("/mavros/state", State, self.state_cb)
         self.pose_sub = rospy.Subscriber("/mavros/local_position/pose", PoseStamped, self.pose_cb)
         self.mission_sub = rospy.Subscriber("/mission", Float32, self.mission_cb)
-        # Publisher for setpoint
+        
         self.target_pose_pub = rospy.Publisher("/mavros/setpoint_position/local", PoseStamped, queue_size=1)
         #Service
         rospy.loginfo('-------------Waiting for services to connect--------------')
@@ -33,7 +33,7 @@ class SetmodeClass(object):
     def pose_cb(self, msg):
         self.current_pose = msg
 
-    def state_cb(self, msg): # Callback for drone state message
+    def state_cb(self, msg):
         prev_state = self.current_state
         self.current_state = msg
 
@@ -42,7 +42,7 @@ class SetmodeClass(object):
         if self.current_state.armed != prev_state.armed:
             rospy.loginfo(f"Vehicle armed : {self.current_state.armed}")
             
-    def mission_cb(self, msg): # Callback for mission message to change land mode
+    def mission_cb(self, msg):
         self.mission = msg.data
         if self.mission == 11:
             rospy.loginfo(f"Disarming activated")
@@ -51,12 +51,19 @@ class SetmodeClass(object):
     def setMode(self, mode):
         rospy.logerr('Mode Changed')
         rate = rospy.Rate(5)
+        # for _ in range(20):
+        #     self.target_pose.pose.position.x = 0
+        #     self.target_pose.pose.position.y = 0
+        #     self.target_pose.pose.position.z = 0
+        #     self.target_pose_pub.publish(self.target_pose)
+        #     rate.sleep()
         try:
-            response = self.set_mode_client(base_mode = 0, custom_mode = mode) # Change to desired mode
+            response = self.set_mode_client(base_mode = 0, custom_mode = mode)
             # return response.mode_sent
         except rospy.ServiceException as e:
             rospy.loginfo("Service call failed : %s" %e)
 
+    ##todo
     def setArm(self):
         rate = rospy.Rate(0.5)
         while True:
@@ -67,7 +74,9 @@ class SetmodeClass(object):
                 break
             rate.sleep()
 
-    def INIT_ACTUATOR(self): # Function to initialize servos
+    ##todo
+    def INIT_ACTUATOR(self):
+        # rospy.loginfo('Waiting for server...')
         rospy.wait_for_service('/mavros/cmd/command')
         try:
             servo_control_srv = rospy.ServiceProxy('/mavros/cmd/command', CommandLong)
@@ -75,8 +84,10 @@ class SetmodeClass(object):
             msg = CommandLong()
             resp = servo_control_srv(broadcast=False, command=187, confirmation=False, param1=1, param2=-1, param3=0, param4=0, param5=0, param6=0, param7=0)
 
+            # rospy.loginfo('Try service call...')
             if resp.success:
                 rospy.loginfo("Servo initialized successfully")
+                # print(f"result: {resp.result}")
             else:
                 rospy.loginfo("Failed to control servo 1")
             return resp.success
@@ -116,6 +127,7 @@ if __name__ == "__main__":
         rospy.spin()
     except rospy.ROSInterruptException as exception:
         pass
+
 
 
 
