@@ -1,46 +1,57 @@
 #!/usr/bin/env python3
 
 import rospy, rospkg
+
+# ML, Calculation pkgs
 import cv2, torch
 import numpy as np
-
+from sklearn.decomposition import PCA
+from scipy.stats import zscore
 import math, time, os, datetime
 
 from cv_bridge import CvBridge, CvBridgeError
 
+# import msgs...
 import message_filters
 from sensor_msgs.msg import Image, Imu
 from geometry_msgs.msg import PoseStamped, Point
 from visualization_msgs.msg import Marker
 from mavros_msgs.msg import State
 from std_msgs.msg import Float32, String
+
+# custom pkgs
 from ysdrone_msgs.srv import *
-
 from koreauav_utils import auto_service
-
-from sklearn.decomposition import PCA
-from scipy.stats import zscore
 
 class MarkerDetection(object):
     def __init__(self):
         self.last_detection_time = time.time()
         self.rospack = rospkg.RosPack()
 
+        # load yolov5 model from local
         self.yoloPath = self.rospack.get_path('yolo_cross_detection') + '/yolov5'
         self.weightPath = self.rospack.get_path('yolo_cross_detection') + '/weight/yolov5nV4.onnx'
         self.model = torch.hub.load(self.yoloPath, 'custom', self.weightPath, source='local', force_reload=True)
         self.model.iou = 0.5
 
+        # mission info
         self.mission = 0
         self.mission_rep = ""
 
+        # list to stack setpoint, crossmarker point
         self.setpoint_list = []
         self.crosspos_list = []
 
+        # setpoint approach counter
         self.counter = 0
+
+        # used for log matrices
         self.id = 0
 
+        # PCA feature extracotr
         self.pca = PCA(n_components=2)
+
+        # Realsense Intrinsic
         self.intrinsic_matrix = np.array([[385.7627868652344, 0.0, 331.9479064941406],
                         [0.0, 385.4613342285156, 237.6436767578125],
                         [0.0, 0.0, 1.0]])
@@ -49,18 +60,19 @@ class MarkerDetection(object):
         self.Kp_att = 0.1
         self.Kp_rel = 2500.0
 
-        self.radius = rospy.get_param("radius", 6)
-        self.obstacle_bound = rospy.get_param("obstacle_bound",2)
+        # ROSPARM get_param()
+        self.radius = rospy.get_param("radius", 6) # 원주 비행 시 건물 중심으로부터의 반지름
+        self.obstacle_bound = rospy.get_param("obstacle_bound",2) # 건물 중심으로부터 Potential Field가 작동되는 반지름 범위
         
-        self.circular_speed = rospy.get_param("circular_speed", 0.1)
-        self.yolo_search_count = rospy.get_param("yolo_search_count", 7)
-        self.yolo_stack_count = rospy.get_param("yolo_stack_count", 15)
-        self.setpoint_count = rospy.get_param("setpoint_count",10)
+        self.circular_speed = rospy.get_param("circular_speed", 0.1) # 원주 비행 시 각속도
+        self.yolo_search_count = rospy.get_param("yolo_search_count", 7) # 마커를 찾았다고 판단할 때 사용하는 crosspos_list의 개수
+        self.yolo_stack_count = rospy.get_param("yolo_stack_count", 15) # 마커의 값을 평균낼 때 사용하는 crosspos_list의 개수
+        self.setpoint_count = rospy.get_param("setpoint_count",10) # setpoint에 도착했다고 판단할 때 사용하는 self.count의 수
 
-        self.offset = rospy.get_param("yolo_offset", 5) # Distance from the cross marker
-        self.setpoint_criterion = rospy.get_param("setpoint_criterion", 0.3)
-        
+        self.offset = rospy.get_param("yolo_offset", 5) # 마커로부터 setpoint의 거리
+        self.setpoint_criterion = rospy.get_param("setpoint_criterion", 0.3) # setpoint에 도착했다고 판단하기 위한 기준(m)
 
+        # initiate classes for callback
         self.current_state = State()
         self.current_pose = PoseStamped()
         self.final_coord = PoseStamped()
@@ -68,30 +80,30 @@ class MarkerDetection(object):
         self.target_pose = PoseStamped()
         self.centroid = None
         self.downward = None
-        self.centroid_list = []
 
         # Subscriber
-        self.rgb_image_sub = message_filters.Subscriber('/camera/color/image_raw', Image)
-        self.depth_image_sub = message_filters.Subscriber('/camera/aligned_depth_to_color/image_raw', Image)
-        self.downward_sub = rospy.Subscriber('/cv_image', Image, self.downward_cb)
+        self.rgb_image_sub = message_filters.Subscriber('/camera/color/image_raw', Image) # front cam rgb
+        self.depth_image_sub = message_filters.Subscriber('/camera/aligned_depth_to_color/image_raw', Image) # front cam depth
+        self.downward_sub = rospy.Subscriber('/cv_image', Image, self.downward_cb) # downward cam
 
-        self.state_sub = rospy.Subscriber('/mavros/state', State, self.state_cb)
+        self.state_sub = rospy.Subscriber('/mavros/state', State, self.state_cb) # drone states
         self.pose_sub = rospy.Subscriber('/mavros/local_position/pose', PoseStamped, self.pose_cb)
         self.imu_sub = rospy.Subscriber('/mavros/imu/data', Imu, self.imu_cb)
 
-        self.mission_sub = rospy.Subscriber('/mission', Float32, self.mission_cb)
-        self.mission_rep_sub = rospy.Subscriber('/mission_rep', String, self.mission_rep_cb)
+        self.mission_sub = rospy.Subscriber('/mission', Float32, self.mission_cb) # mission number
+        self.mission_rep_sub = rospy.Subscriber('/mission_rep', String, self.mission_rep_cb) # mission name
 
-        self.centroid_sub = rospy.Subscriber('/building/search/centroid_pose', PoseStamped, self.centroid_cb)
+        self.centroid_sub = rospy.Subscriber('/building/search/centroid_pose', PoseStamped, self.centroid_cb) # building centroid from mission 2
 
         # Synchronize the topics
         ts = message_filters.ApproximateTimeSynchronizer([self.rgb_image_sub, self.depth_image_sub], queue_size=10, slop=0.1)
         ts.registerCallback(self.image_cb)
 
         # Publisher
-        self.image_pub = rospy.Publisher('/cross_image', Image, queue_size=1)
-        self.target_pose_pub = rospy.Publisher('/launch_setposition', PoseStamped, queue_size=1)
+        self.image_pub = rospy.Publisher('/cross_image', Image, queue_size=1) # front cam image for broadcast
+        self.target_pose_pub = rospy.Publisher('/launch_setposition', PoseStamped, queue_size=1) # target position
         
+        # Gazebo Marker Publishers
         self.centroid_pub = rospy.Publisher('/building_centroid', Marker, queue_size=1)
         self.obstacle_bound_pub = rospy.Publisher('/obstacle_bound', Marker, queue_size=1)
         self.approch_pub = rospy.Publisher('/cross_marker_approch_setpoint', Marker, queue_size=1)
@@ -102,26 +114,27 @@ class MarkerDetection(object):
         rospy.loginfo(f'npy log dir : {self.logd}')
         os.mkdir(self.logd)
 
-    def centroid_cb(self, msg):
+    # ================================Subscriber Callbacks===========================================
+    def centroid_cb(self, msg): # store centroid, publish to gazebo
         x, y, z = msg.pose.position.x, msg.pose.position.y, msg.pose.position.z
         self.centroid = np.array([x,y,z])
         marker = self.make_cube_marker(self.centroid, (0, 255, 0), 0.6)
         self.centroid_pub.publish(marker)
     
-    def mission_cb(self, msg):
+    def mission_cb(self, msg): # store mission number
         self.mission = msg.data
 
-    def mission_rep_cb(self, msg):
+    def mission_rep_cb(self, msg): # store mission name
         self.mission_rep = msg.data
 
-    def imu_cb(self, msg):
+    def imu_cb(self, msg): # store drone imu
         self.imu = msg
 
-    def downward_cb(self, msg):
+    def downward_cb(self, msg): # store downward cam img
         bridge = CvBridge()
         self.downward = bridge.imgmsg_to_cv2(msg, desired_encoding='rgb8')
 
-    def state_cb(self, msg):
+    def state_cb(self, msg): # store drone state
         prev_state = self.current_state
         self.current_state = msg
 
@@ -130,36 +143,17 @@ class MarkerDetection(object):
         if self.current_state.armed != prev_state.armed:
             rospy.loginfo(f"Vehicle armed : {self.current_state.armed}")
     
-    def pose_cb(self, msg):
+    def pose_cb(self, msg): # store drone pose
         self.current_pose = msg
 
-    def to_euler_angles(self, x, y, z, w):
-        # roll(x-axis rotation)
-        sinr_cosp = 2 * (w * x + y * z)
-        cosr_cosp = 1 - 2 * (x * x + y * y)
-        angles_roll = math.atan2(sinr_cosp, cosr_cosp)
-
-        # pitch(y-axis rotation)
-        sinp = 2 * (w * y - z * x)
-        if abs(sinp) >= 1:
-            angles_pitch = math.copysign(math.pi / 2, sinp) # use 90 degrees if out of range
-        else:
-            angles_pitch = math.asin(sinp)
-        
-        # yaw(z-axis rotation)
-        siny_cosp = 2 * (w * z + x * y)
-        cosy_cosp = 1 - 2 * (y * y + z * z)
-        angles_yaw = math.atan2(siny_cosp, cosy_cosp)
-
-        return angles_roll, angles_pitch, angles_yaw
-
-    def log_matrices(self, cross_pos_3d, other_pos_3d, drone_pos_3d, setpoint, id=0):
+    # ================================Debugging Functions==========================================
+    def log_matrices(self, cross_pos_3d, other_pos_3d, drone_pos_3d, setpoint, id=0): # log matrices for debugging
         np.save(self.logd + f'/cross_pos_3d_{id}.npy', cross_pos_3d)
         np.save(self.logd + f'/other_pos_3d_{id}.npy', other_pos_3d)
         np.save(self.logd + f'/drone_pos_3d_{id}.npy', drone_pos_3d)
         np.save(self.logd + f'/setpoint_{id}.npy', setpoint)
 
-    def make_cube_marker(self, pos, color, scale):
+    def make_cube_marker(self, pos, color, scale): # make cube marker for gazebo
         marker = Marker()
         marker.type = Marker.CUBE
         marker.header.frame_id = 'local_origin'
@@ -175,7 +169,7 @@ class MarkerDetection(object):
         marker.pose.position = Point(pos[0], pos[1], pos[2])
         return marker
 
-    def make_line_marker(self, pos, radius):
+    def make_line_marker(self, pos, radius): # make line marker for visualize potential field bound
         marker2 = Marker()
         marker2.lifetime = rospy.Duration()
         marker2.header.frame_id = "local_origin"
@@ -197,23 +191,47 @@ class MarkerDetection(object):
         marker2.points = points
         return marker2
 
-    def get_3d_coord_fast(self, pixels, depth_frame):
+    # ================================Setpoint Calculation Functions==========================================
+    def to_euler_angles(self, x, y, z, w): # quarternion to euler angles
+        # roll(x-axis rotation)
+        sinr_cosp = 2 * (w * x + y * z)
+        cosr_cosp = 1 - 2 * (x * x + y * y)
+        angles_roll = math.atan2(sinr_cosp, cosr_cosp)
+
+        # pitch(y-axis rotation)
+        sinp = 2 * (w * y - z * x)
+        if abs(sinp) >= 1:
+            angles_pitch = math.copysign(math.pi / 2, sinp) # use 90 degrees if out of range
+        else:
+            angles_pitch = math.asin(sinp)
+        
+        # yaw(z-axis rotation)
+        siny_cosp = 2 * (w * z + x * y)
+        cosy_cosp = 1 - 2 * (y * y + z * z)
+        angles_yaw = math.atan2(siny_cosp, cosy_cosp)
+
+        return angles_roll, angles_pitch, angles_yaw
+
+    def get_3d_coord_fast(self, pixels, depth_frame): # Pixel -> Camera -> FLU -> ENU -> Local
         pixels = np.array(pixels).astype(np.int32)
         distances = depth_frame[pixels[:, 1], pixels[:, 0]]
         # Remove NaN values from numpy array 
         depth_mean = np.mean(distances[~np.isnan(distances)]) * 0.001 # unit convert (mm to m)
-        #=====================Pixel to Camera======================================================================
+
+        # Pixel to Camera
         camera_coords = np.ones((4, len(distances)))
         camera_coords[2, :] = distances*0.001
         camera_coords[0, :] = (pixels[:, 0] - self.intrinsic_matrix[0, 2]) * camera_coords[2, :] / self.intrinsic_matrix[0, 0] #x
         camera_coords[1, :] = (pixels[:, 1] - self.intrinsic_matrix[1, 2]) * camera_coords[2, :] / self.intrinsic_matrix[1, 1] #y
-        #=====================Camera to FLU========================================================================
+
+        # Camera to FLU
         camera_to_flu = np.array([[ 6.12323400e-17,  0.00000000e+00,  1.00000000e+00,  0.00000000e+00], 
                                 [-1.00000000e+00,  6.12323400e-17,  6.12323400e-17,  0.00000000e+00], 
                                 [-6.12323400e-17, -1.00000000e+00,  3.74939946e-33,  0.00000000e+00], 
                                 [ 0.00000000e+00,  0.00000000e+00,  0.00000000e+00,  1.00000000e+00]])
         flu_coords = np.dot(camera_to_flu, camera_coords)
-        #======================FLU to ENU==========================================================================
+        
+        # FLU to ENU
         roll, pitch, yaw = self.to_euler_angles(self.imu.orientation.x, self.imu.orientation.y, self.imu.orientation.z, self.imu.orientation.w)
         enu_yaw = np.array([[np.cos(yaw), -np.sin(yaw), 0], [np.sin(yaw), np.cos(yaw), 0], [0, 0, 1]])
         enu_roll = np.array([[1, 0, 0], [0, np.cos(roll), -np.sin(roll)], [0, np.sin(roll), np.cos(roll)]])
@@ -224,7 +242,8 @@ class MarkerDetection(object):
         flu_to_enu[:3, :3] = enu_rotation
         flu_to_enu[:3, 3] = enu_translation
         enu_coords = np.dot(flu_to_enu, flu_coords)
-        #=======================ENU to Local position==============================================================
+
+        # ENU to Local position
         enu_coords[0, :] += self.current_pose.pose.position.x
         enu_coords[1, :] += self.current_pose.pose.position.y
         enu_coords[2, :] += self.current_pose.pose.position.z
@@ -233,25 +252,25 @@ class MarkerDetection(object):
         return enu_coords[:,0:3], depth_mean
     
     # inverse tf of get_3d_coord
-    def get_2d_coord(self, position):
-        #=============================Local to ENU coordinate(drone position)===============
+    def get_2d_coord(self, position): # Local -> ENU -> FLU -> Camera -> Pixel
+        # Local to ENU coordinate(drone position)
         position = np.array([position[0], position[1], position[2], 1])
         enu_coord = np.ones(4)
         enu_coord[0] = position[0] - self.current_pose.pose.position.x
         enu_coord[1] = position[1] - self.current_pose.pose.position.y
         enu_coord[2] = position[2] - self.current_pose.pose.position.z
-        #==================================ENU to FLU coordinate(east-north-up)=======================================
+
+        # ENU to FLU coordinate(east-north-up)
         _, _, yaw = self.to_euler_angles(self.imu.orientation.x, self.imu.orientation.y, self.imu.orientation.z, self.imu.orientation.w)
         yaw *= -1
         enu_rotation = np.array([[np.cos(yaw), -np.sin(yaw), 0], [np.sin(yaw), np.cos(yaw), 0], [0, 0, 1]])
         enu_translation = np.array([0, 0, 0])
-
         enu_to_flu = np.eye(4)
         enu_to_flu[:3, :3] = enu_rotation
         enu_to_flu[:3, 3] = enu_translation
-
         flu_coord = np.dot(enu_to_flu, enu_coord)
-        #===============================FLU to Camera coordinate(front-left-up)==========================================
+
+        # FLU to Camera coordinate(front-left-up)
         x_rotation = -90 * math.pi / 180
         y_rotation = 90 * math.pi / 180
         z_rotation = 0 
@@ -261,13 +280,12 @@ class MarkerDetection(object):
         flu_rotation = np.dot(flu_x_rotation, flu_y_rotation)
         flu_rotation = np.linalg.inv(flu_rotation)
         flu_translation = np.array([0, 0, 0])
-
         flu_to_cam = np.eye(4)
         flu_to_cam[:3, :3] = flu_rotation
         flu_to_cam[:3, 3] = flu_translation
-
         cam_coord = np.dot(flu_to_cam, flu_coord)
-        #===============================Camera to Pixel coordinate==========================================
+
+        # Camera to Pixel coordinate
         cam_coord = cam_coord[:3]
         image_coordinates = np.dot(self.intrinsic_matrix, cam_coord)
         u = image_coordinates[0] / image_coordinates[2]
@@ -276,7 +294,7 @@ class MarkerDetection(object):
         return [int(u), int(v)]
     
     
-    def square_sampling(self, left_top, right_bottom, interval=2):
+    def square_sampling(self, left_top, right_bottom, interval=2): # sample points from marker
         result = []
         x_start, y_start = left_top
         x_end, y_end = right_bottom
@@ -287,37 +305,44 @@ class MarkerDetection(object):
 
         return result
     
-    def cal_approch_setpoint(self, cross_pos, other_pos, drone_pos, offset, depth_mean):
-        points = np.array(other_pos)
+    def cal_approch_setpoint(self, cross_pos, other_pos, drone_pos, offset, depth_mean): # calculate setpoint
+        points = np.array(other_pos) # to numpy array
 
+        # remove z-score >= 2.5 points
         z_scores = np.abs(zscore(points[:, :2]))
         z_scores = np.sqrt(z_scores[:, 0] ** 2 + z_scores[:, 1] ** 2)
         inliers = z_scores < 2.5
-        
+
+        # Projection to xy plane
         points = points[inliers, :2]
-        if points.shape[0] < 3:
+
+        if points.shape[0] < 3: # samples not reliable
             nan_array = np.array([np.nan, np.nan, np.nan])
             return nan_array
         else:
+            # use pca to find principle components
             param = self.pca.fit(points).components_
-            normal_vector = np.array([param[-1][0], param[-1][1], 0])
+            normal_vector = np.array([param[-1][0], param[-1][1], 0]) # second principle is normal vector
             cross_drone_vec = cross_pos - drone_pos
 
-            if np.dot(normal_vector, cross_drone_vec) > 0:
+            if np.dot(normal_vector, cross_drone_vec) > 0: # To make the normal vector point towards the drone
                 normal_vector = -normal_vector
-            # drone setpoint
+
+            # drone setpoint = cross marker pos + offset * normal vector
             return cross_pos + normal_vector / np.linalg.norm(normal_vector) * offset * offset / (depth_mean if depth_mean < offset else offset)
 
+    # =======================Potential Field Functions=======================================================================================
     def calc_attractive_force(self, x, y, gx, gy):
         e_x, e_y = gx-x, gy-y
         distance = np.linalg.norm([e_x, e_y])
 
-        self.Kp_att = distance * 0.1
-        if self.Kp_att < 0.3:
+        self.Kp_att = distance * 0.1 # calculate attractive force
+        if self.Kp_att < 0.3: # threshold to not make force toward zero
             self.Kp_att = 0.3
 
-        att_x = self.Kp_att * e_x/distance
-        att_y = self.Kp_att * e_y/distance
+        # calculate x, y components
+        att_x = self.Kp_att * e_x / distance
+        att_y = self.Kp_att * e_y / distance
 
         return att_x, att_y
 
@@ -325,32 +350,33 @@ class MarkerDetection(object):
         rep_x, rep_y = 0.0, 0.0
 
         for obs_xy in np.ndindex(obs.shape[0]):
-            obs_dis_x, obs_dis_y = obs[obs_xy][0]-x, obs[obs_xy][1]-y
+            obs_dis_x, obs_dis_y = obs[obs_xy][0] - x, obs[obs_xy][1] - y
             obs_dis = np.linalg.norm([obs_dis_x, obs_dis_y])
 
             if obs_dis < self.obstacle_bound:
-                rep_x = rep_x - self.Kp_rel*(1/obs_dis - 1/self.obstacle_bound)*(1/(obs_dis*obs_dis))*obs_dis_x/obs_dis
-                rep_y = rep_y - self.Kp_rel*(1/obs_dis - 1/self.obstacle_bound)*(1/(obs_dis*obs_dis))*obs_dis_y/obs_dis
+                rep_x = rep_x - self.Kp_rel * (1 / obs_dis - 1 / self.obstacle_bound) * (1 / (obs_dis * obs_dis)) * obs_dis_x / obs_dis
+                rep_y = rep_y - self.Kp_rel * (1 / obs_dis - 1 / self.obstacle_bound) * (1 / (obs_dis * obs_dis)) * obs_dis_y / obs_dis
             else:
                 rep_x = rep_x
                 rep_y = rep_y
             bound = self.make_line_marker(obs[obs_xy], self.obstacle_bound)
             self.obstacle_bound_pub.publish(bound)
         return rep_x, rep_y
+    # ===============================================================================================================================
 
-    def image_cb(self, rgb_image, depth_image):
+    def image_cb(self, rgb_image, depth_image): # main callback
         bridge = CvBridge()
         rgb_frame = bridge.imgmsg_to_cv2(rgb_image, desired_encoding='rgb8')
         depth_frame = bridge.imgmsg_to_cv2(depth_image, desired_encoding='16UC1')
         try:
-            if self.mission == 3:
-                start = time.time()
-                resolution = (rgb_frame.shape[0], rgb_frame.shape[1])
-                results = self.model(cv2.resize(rgb_frame, (640, 640)))
+            if self.mission == 3: # yolo mode
+                start = time.time() # inference start time
+                resolution = (rgb_frame.shape[0], rgb_frame.shape[1]) # resolution of img
+                results = self.model(cv2.resize(rgb_frame, (640, 640))) # run yolov5 model
                 xyxy = None # Initialize xyx with None
-                obstacle = np.array([[self.centroid[0], self.centroid[1], self.centroid[2]]]) 
+                obstacle = np.array([[self.centroid[0], self.centroid[1], self.centroid[2]]]) # obstacle centroid
 
-                if len(self.crosspos_list) < self.yolo_search_count:
+                if len(self.crosspos_list) < self.yolo_search_count: # crossmarker not found, circular flight based on building centroid
                     error_yaw = math.atan2(self.centroid[1] - self.current_pose.pose.position.y, self.centroid[0] - self.current_pose.pose.position.x)
                     current_angle = error_yaw + math.pi
                     qz = math.sin(error_yaw/2.0)
@@ -365,7 +391,7 @@ class MarkerDetection(object):
                     self.target_pose.pose.orientation.w = qw
                     self.target_pose_pub.publish(self.target_pose)
                 
-                elif self.yolo_search_count<=len(self.crosspos_list)<=self.yolo_search_count+self.yolo_stack_count:
+                elif self.yolo_search_count<=len(self.crosspos_list)<=self.yolo_search_count+self.yolo_stack_count: # marker found, stop and stack datas
                     error_yaw = math.atan2(self.centroid[1] - self.current_pose.pose.position.y, self.centroid[0] - self.current_pose.pose.position.x)
                     current_angle = error_yaw + math.pi
                     qz = math.sin(error_yaw/2.0)
@@ -379,12 +405,12 @@ class MarkerDetection(object):
                     self.target_pose.pose.orientation.w = qw
                     self.target_pose_pub.publish(self.target_pose)
                     
-                    if time.time() - self.last_detection_time > 3:
+                    if time.time() - self.last_detection_time > 3: # marker dissapeared, retry circular flight
                         self.crosspos_list = []
                         self.setpoint_list = []
                         rospy.loginfo("================RESET====================")
 
-                else:
+                else: # setpoint calculated, approach to setpoint
                     setpoint = np.mean(np.array(self.setpoint_list)[7: , :], axis=0)
                     marker = self.make_cube_marker(setpoint, (0.0, 0.0, 1.0), 0.4)
                     self.approch_pub.publish(marker)
@@ -423,9 +449,10 @@ class MarkerDetection(object):
                     self.target_pose.pose.orientation.w = qw
                     self.target_pose_pub.publish(self.target_pose)
 
+                # Analyze yolo, stack results, calculate setpoints
                 for volume in results.xyxy[0]:
                     xyxy = volume.numpy()
-                    if xyxy[4] < 0.5:
+                    if xyxy[4] < 0.5: # not confident
                         break
                     
                     self.last_detection_time = time.time()
@@ -461,14 +488,18 @@ class MarkerDetection(object):
                         self.log_matrices(cross_pos_3d, other_pos_3d, drone_pos_3d, setpoint, id=self.id)
                         self.id += 1
 
+                    # visualize setpoint information & counter check
                     if len(self.setpoint_list) >= self.yolo_search_count:
                         setpoint_distance = np.linalg.norm(drone_pos_3d - np.mean(np.array(self.setpoint_list)[self.yolo_search_count: , :], axis=0))
+
                         cv2.putText(rgb_frame, f'setpoint distance : {setpoint_distance:.2f} : {self.counter}/{self.setpoint_count}', (0, 75), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(255, 128, 0), thickness=2)
-                        if setpoint_distance < self.setpoint_criterion:
+
+                        if setpoint_distance < self.setpoint_criterion: # approached, counter up
                             self.counter += 1
-                        if self.counter > self.setpoint_count:
+                        if self.counter > self.setpoint_count: # finally approached, move to Cargo Launch Mode
                             auto_service.call_drone_command(4)                 
 
+                    # visualize yolo inference information
                     cv2.putText(rgb_frame, f'inference time : {time.time() - start:.3f}', (0, 50), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(0, 0, 255), thickness=2)
                     cv2.rectangle(rgb_frame, (int(xyxy[0]), int(xyxy[1])), (int(xyxy[2]), int(xyxy[3])), color=(0, 255, 0), thickness=2)
                     cv2.putText(rgb_frame, f'{xyxy[4]:.3f}', (int(xyxy[0]), int(xyxy[1])), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(0, 255, 0), thickness=2)
@@ -480,9 +511,10 @@ class MarkerDetection(object):
                     break
 
             try:
+                # visualize mission information, downward cam (running even not yolo mode)
                 cv2.putText(rgb_frame, f"Mission : {int(self.mission)} \"{self.mission_rep}\"", (0, 25), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(0, 0, 0), thickness=2)
                 if self.downward is not None:
-                    size = 430 if self.mission in [6, 9, 10] else 200
+                    size = 430 if self.mission in [6, 9, 10] else 200 # make larger if mode is landing mode
                     downward = cv2.resize(self.downward, (size, size))
                     rgb_frame[-(size+5):, -(size+5):] = np.zeros((size+5, size+5, 3))
                     rgb_frame[-size:, -size:] = downward
@@ -491,10 +523,8 @@ class MarkerDetection(object):
                 self.image_pub.publish(image_msg)
             except CvBridgeError as e:
                 print(e)
-
         except CvBridgeError as e:
             print(e)
-
 
 if __name__ == '__main__':
     rospy.init_node('yolo_tf_node', anonymous=True)
