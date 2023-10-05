@@ -32,11 +32,8 @@ class PathClass(object):
         self.pose_sub = rospy.Subscriber('/mavros/local_position/pose', PoseStamped, self.pose_cb)
         self.mission_sub = rospy.Subscriber('/mission', Float32, self.mission_cb)
 
-        if rospy.has_param('/destination_z'):
-            self.destination_z = rospy.get_param('/destination_z')
-        else:
-            self.destination_z = 3.0
-            rospy.set_param('/destination_z', self.destination_z)
+        self.destination_z = rospy.get_param('/destination_z', 3.0) #Set default value to 3.0m
+        
         rospy.logwarn(f"Check Z param! {rospy.get_param('/destination_z')}")
         rospy.logwarn(f"Check Z param! {rospy.get_param('/destination_z')}")
             
@@ -54,9 +51,9 @@ class PathClass(object):
     def state_cb(self, msg):
         self.current_state = msg
     
-    def pose_cb(self, msg):
+    def pose_cb(self, msg): # Callback for drone pose message
         self.current_pose = msg
-        if not self.init_destination_check:
+        if not self.init_destination_check: #Check if the location command changes
             self.init_destination_cmd.pose.position.x = self.current_pose.pose.position.x
             self.init_destination_cmd.pose.position.y = self.current_pose.pose.position.y
             self.init_destination_check = True
@@ -91,18 +88,13 @@ class PathClass(object):
     def destination_publisher(self, e):
         if self.init_destination_check:
             self.destination_cmd.header.stamp = rospy.get_rostime()
-            self.destination_cnt_msg.data = self.destination_cnt
+            self.destination_cnt_msg.data = self.destination_cnt # Update the destination count message
 
-            #=====================================LOCAL COORDINATE=======================================================
             self.destination_positions = [
                 (self.destination_1_pose.point.x, self.destination_1_pose.point.y, self.destination_z),
                 (self.destination_2_pose.point.x, self.destination_2_pose.point.y, self.destination_z),
                 (self.destination_3_pose.point.x, self.destination_3_pose.point.y, self.destination_z)
             ]
-            #rospy.loginfo(f"Waypoint 1 - x: {self.destination_1_pose.point.x}, y: {self.destination_1_pose.point.y}, z: {self.destination_z}")
-            #rospy.loginfo(f"Waypoint 2 - x: {self.destination_2_pose.point.x}, y: {self.destination_2_pose.point.y}, z: {self.destination_z}")
-            #rospy.loginfo(f"Waypoint 3 - x: {self.destination_3_pose.point.x}, y: {self.destination_3_pose.point.y}, z: {self.destination_z}")
-            #=============================================================================================================
 
             if self.destination_cnt < len(self.destination_positions):
                 self.destination_cmd.pose.position.x, self.destination_cmd.pose.position.y, self.destination_cmd.pose.position.z = self.destination_positions[self.destination_cnt]
@@ -112,14 +104,8 @@ class PathClass(object):
                 if self.mission == 1:
                     auto_service.call_drone_command(2)
 
-
             if self.calc_xy_err(self.destination_cmd, self.current_pose) < 0.3 and self.calc_z_err(self.destination_cmd, self.current_pose) < 0.2:
-                # TODO 대회에서 요구하는 정확도 확인 && 실제로 어느정도 정확하게 나오는지 확인 필요.
                 self.destination_cnt += 1
-                # 여기 나중에 수정 필요
-                # if self.destination_cnt > 4:
-                #     self.destination_cnt = 0
-            
 
 if __name__ == "__main__":
     rospy.init_node('path_node', anonymous=True)
@@ -131,9 +117,6 @@ if __name__ == "__main__":
         while not rospy.is_shutdown() and not path_node_handler.current_state.connected:
             rate.sleep()
         rospy.loginfo("Path node : FCU connected")
-        # rospy.logwarn(f"Check Z value! {path_node_handler.destination_z}")
-        # rospy.logwarn(f"Check Z value! {path_node_handler.destination_z}")
-
         rospy.Timer(rospy.Duration(0.05), path_node_handler.destination_publisher)
 
         rospy.spin()
@@ -146,4 +129,4 @@ if __name__ == "__main__":
 
     
 
-
+ 
