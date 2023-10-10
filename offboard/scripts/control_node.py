@@ -12,7 +12,6 @@ from dynamic_reconfigure.client import Client
 
 from ysdrone_msgs.srv import *
 from koreauav_utils import auto_service
-#====================================================================
 # Mathmatical conversion functions
 def rad2deg(radian):
     return radian * 180 / math.pi
@@ -54,30 +53,6 @@ def to_euler_angles(x, y, z, w):
     angles_yaw = math.atan2(siny_cosp, cosy_cosp)
 
     return angles_roll, angles_pitch, angles_yaw
-#====================================================================
-
-#====================================================================
-# Fucntions to limit the velocity
-# var : current velocity, val : limit velocity
-# val(limit velocity) is always positive 이거 나중에 다시 확인하자!!!!!!
-def lim(var, val):
-    if val >= 0:
-        if var > val:
-            var = val
-    elif val < 0:
-        if var < (-1) * val:
-            var = (-1) * val
-    return var
-
-def lim_z_vel(var, val):
-    if var >= 0:
-        if var > val:
-            var = val
-    elif var < 0:
-        if var < (-1) * val:
-            var = (-1) * val
-    return var
-#====================================================================
 
 class ControlClass(object):
     def __init__(self):
@@ -92,7 +67,7 @@ class ControlClass(object):
         self.desired_landing = PositionTarget()
         self.desired_landing_position = PoseStamped()
         self.mission_num = Float32()
-        self.mission_rep = String()
+        self.mission_rep = String() #mission_rep = mission name
         self.RL_target_vel = Twist()
         self.landing_velocity_position = PoseStamped()
         self.landing_velocity = PositionTarget()
@@ -137,8 +112,7 @@ class ControlClass(object):
         self.landing_velocity_position_sub = rospy.Subscriber('/landing_velocity_position', PoseStamped, self.landing_velocity_position_cb)
 
     
-  
-    def avoidance_pos_cb(self, msg):
+    def avoidance_pos_cb(self, msg): # Callback for using avoidance
         self.avoidance = msg
 
         if self.cmd_state == 2 and self.building_target.pose.position.z != 0:
@@ -150,10 +124,8 @@ class ControlClass(object):
 
         if self.cmd_state not in [6, 9, 10, 11]:
             self.target_pose_pub.publish(self.avoidance)
-    #====================================================
     
-
-    def move_cb(self, msg):
+    def move_cb(self, msg): #Callback for when avoidance is not used
         self.move = msg
         self.move_marker.pose.position.x = msg.pose.position.x
         self.move_marker.pose.position.y = msg.pose.position.y
@@ -215,7 +187,7 @@ class ControlClass(object):
     def landing_velocity_position_cb(self, msg):
         self.landing_velocity_position = msg
         
-    def relative_dis_cb(self, msg):
+    def relative_dis_cb(self, msg): #Callback for relative distance between drone and target
         self.relative_dis = msg
 
     def destination_command_cb(self, msg):
@@ -224,7 +196,6 @@ class ControlClass(object):
         self.destination_command_marker.pose.position.z = msg.pose.position.z
         self.destination_command_marker_array.markers.clear()
         self.destination_command_marker_array.markers.append(self.destination_command_marker)
-    
     
     def state_cb(self, msg):
         self.current_state = msg
@@ -309,23 +280,17 @@ class ControlClass(object):
             new_config = {"obstacle_cost_param_": 4}
             config = self.dynamic_client.update_configuration(new_config)
             self.avoidance_pos_pub.publish(self.destination_command_marker_array)
-            #rospy.loginfo(f"{self.destination_command_marker_array}")
-            #rospy.loginfo(f'Target Waypoint - x :{self.destination_command_marker.pose.position.x}, y :{self.destination_command_marker.pose.position.y}, z :{self.destination_command_marker.pose.position.z}')
 
         # Mission 2(Building Searching)
         if self.cmd_state == 2:
             self.avoidance_pos_pub.publish(self.building_target_marker_array)
-            #rospy.loginfo(f"Mission published to [Building Search] data: {self.mission_num.data}")
 
-        
         # Mission 3(Cross Detection Mode)
         if self.cmd_state == 3:
             new_config = {"obstacle_cost_param_": 1}
             config = self.dynamic_client.update_configuration(new_config)
             self.avoidance_pos_pub.publish(self.launch_setposition_marker_array) 
-            #rospy.loginfo(f"Mission published to [Cross Detection] data: {self.mission_num.data}")
-
-
+    
         # Mission 4(Cargo Launching Mode)
         if self.cmd_state == 4:
             self.avoidance_pos_pub.publish(self.move_marker_array)
@@ -335,7 +300,6 @@ class ControlClass(object):
             new_config = {"obstacle_cost_param_": 5}
             config = self.dynamic_client.update_configuration(new_config)
             self.avoidance_pos_pub.publish(self.isly_destination_command_marker_array)
-            #rospy.loginfo(f'Target Waypoint - x :{self.isly_destination_command_marker.pose.position.x}, y :{self.isly_destination_command_marker.pose.position.y}, z :{self.isly_destination_command_marker.pose.position.z}')
 
         # Mission 6(Safety Landing)
         if self.cmd_state == 6:
@@ -347,7 +311,6 @@ class ControlClass(object):
             except IndexError:
                 self.target_pose_pub.publish(self.current_pose)
            
-        
         # Mission 7(Position Control)
         if self.cmd_state == 7:
             self.target_pose.pose.position.x = 0.0
@@ -380,8 +343,6 @@ class ControlClass(object):
         if self.cmd_state == 11:
             pass
             
-
-
 if __name__ == "__main__":
     rospy.init_node('control_node')
     control_node_handler = ControlClass()
@@ -395,15 +356,3 @@ if __name__ == "__main__":
     rospy.Timer(rospy.Duration(0.05), control_node_handler.main_controller)
 
     rospy.spin()
-
-
-
-
-
-
-
-
-
-
-
-
