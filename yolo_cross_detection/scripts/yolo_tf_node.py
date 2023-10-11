@@ -147,14 +147,7 @@ class MarkerDetection(object):
     def pose_cb(self, msg): # store drone pose
         self.current_pose = msg
 
-    # ================================Debugging Functions==========================================
-    def log_npys(self, cross_pos_3d, other_pos_3d, drone_pos_3d, setpoint, id=0): # log matrices for debugging
-        np.save(self.logd + f'/cross_pos_3d_{id}.npy', cross_pos_3d)
-        np.save(self.logd + f'/other_pos_3d_{id}.npy', other_pos_3d)
-        np.save(self.logd + f'/drone_pos_3d_{id}.npy', drone_pos_3d)
-        np.save(self.logd + f'/setpoint_{id}.npy', setpoint)
-
-    # ================================Setpoint Calculation Functions==========================================
+    # ================================Setpoint Calculation Functions========================================================================
     def get_3d_coord_fast(self, pixels, depth_frame): # Pixel -> Camera -> FLU -> ENU -> Local
         pixels = np.array(pixels).astype(np.int32)
         distances = depth_frame[pixels[:, 1], pixels[:, 0]]
@@ -261,39 +254,8 @@ class MarkerDetection(object):
 
             # drone setpoint = cross marker pos + offset * normal vector
             return cross_pos + normal_vector / np.linalg.norm(normal_vector) * offset * offset / (depth_mean if depth_mean < offset else offset)
+#=======================================================================================================================================================
 
-    # =======================Potential Field Functions=======================================================================================
-    def calc_attractive_force(self, x, y, gx, gy):
-        e_x, e_y = gx-x, gy-y
-        distance = np.linalg.norm([e_x, e_y])
-
-        self.Kp_att = distance * 0.1 # calculate attractive force
-        if self.Kp_att < 0.3: # threshold to not make force toward zero
-            self.Kp_att = 0.3
-
-        # calculate x, y components
-        att_x = self.Kp_att * e_x / distance
-        att_y = self.Kp_att * e_y / distance
-
-        return att_x, att_y
-
-    def calc_repulsive_force(self, x, y, obs):
-        rep_x, rep_y = 0.0, 0.0
-
-        for obs_xy in np.ndindex(obs.shape[0]):
-            obs_dis_x, obs_dis_y = obs[obs_xy][0] - x, obs[obs_xy][1] - y
-            obs_dis = np.linalg.norm([obs_dis_x, obs_dis_y])
-
-            if obs_dis < self.obstacle_bound:
-                rep_x = rep_x - self.Kp_rel * (1 / obs_dis - 1 / self.obstacle_bound) * (1 / (obs_dis * obs_dis)) * obs_dis_x / obs_dis
-                rep_y = rep_y - self.Kp_rel * (1 / obs_dis - 1 / self.obstacle_bound) * (1 / (obs_dis * obs_dis)) * obs_dis_y / obs_dis
-            else:
-                rep_x = rep_x
-                rep_y = rep_y
-            bound = make_line_marker(obs[obs_xy], self.obstacle_bound)
-            self.obstacle_bound_pub.publish(bound)
-        return rep_x, rep_y
-    # ===============================================================================================================================
 
     def image_cb(self, rgb_image, depth_image): # main callback
         bridge = CvBridge()
@@ -347,8 +309,11 @@ class MarkerDetection(object):
                     goal_x = setpoint[0]
                     goal_y = setpoint[1]
 
-                    att_x, att_y = self.calc_attractive_force(self.current_pose.pose.position.x, self.current_pose.pose.position.y, goal_x, goal_y)
-                    rep_x, rep_y = self.calc_repulsive_force(self.current_pose.pose.position.x, self.current_pose.pose.position.y, obstacle)
+                    att_x, att_y = calc_attractive_force(self.Kp_att, self.current_pose.pose.position.x, self.current_pose.pose.position.y, goal_x, goal_y)
+                    rep_x, rep_y = calc_repulsive_force(self.Kp_rel, self.current_pose.pose.position.x, self.current_pose.pose.position.y, obstacle, self.obstacle_bound)
+
+                    bound = make_line_marker(obstacle[0], self.obstacle_bound)
+                    self.obstacle_bound_pub.publish(bound)
 
                     pot_x = att_x + rep_x
                     pot_y = att_y + rep_y
@@ -414,7 +379,7 @@ class MarkerDetection(object):
                         rospy.loginfo("NaN Setpoint")
                     else:
                         self.setpoint_list.append(setpoint)
-                        self.log_npys(cross_pos_3d, other_pos_3d, drone_pos_3d, setpoint, id=self.id)
+                        self.log_npys(logd=self.logd, cross_pos_3d=cross_pos_3d, other_pos_3d=other_pos_3d, drone_pos_3d=drone_pos_3d, setpoint=setpoint, id=self.id)
                         self.id += 1
 
                     # visualize setpoint information & counter check
