@@ -10,7 +10,14 @@ from sensor_msgs.msg import PointCloud2, Imu, PointField
 import sensor_msgs.point_cloud2 as pc2
 import pcl
 import numpy as np
+from enum import Enum
 from koreauav_utils import auto_service
+
+class Mission(Enum):
+    TAKEOFF = 0
+    AVOIDANCE = 1
+    BUILDING_SEARCH = 2
+    MARKER_APPROACH = 3
 
 ### Util functions
 def to_quaternion(yaw, pitch, roll):
@@ -51,29 +58,25 @@ def to_euler_angles(x, y, z, w):
 ### Class
 class BuildingSearch(object):
     def __init__(self):
-        self.flag = 0
+        self.initAngle = False
         self.current_pose = PoseStamped()
         self.current_state = State()
         self.target_pose = PoseStamped()
         self.centroid = PoseStamped()
         self.mission = Float32()
         self.imu = Imu()
-        self.searching_status = 0
         self.building_centroid = []
         self.pointcloud_centroid = None
-        self.cube_array = MarkerArray()
         self.current_angle = 0.0
-        self.cube_arr_pub = rospy.Publisher('/nearest_point', MarkerArray, queue_size=1)
 
         # ROS params
         self.srv_mode = rospy.get_param("/srv_mode", True)
-        self.building_search_mission = rospy.get_param("/building_search_mission", 2.0)
         self.last_goal_x = rospy.get_param("/destination_3_pose_x", 80.0)
         self.last_goal_y = rospy.get_param("/destination_3_pose_y", -41.0)
         self.last_goal_z = rospy.get_param("/destination_z", 3)
         self.search_height = rospy.get_param('search_height', 3)
-        self.building_search_count = rospy.get_param("building_search_count", 15)
-        self.building_stack_count = rospy.get_param("building_stack_count", 15)
+        self.BUILDING_SEARCH_COUNT = rospy.get_param("building_search_count", 15)
+        self.BUILDING_STACK_COUNT = rospy.get_param("building_stack_count", 15)
         self.radius = rospy.get_param("building_search_radius", 1.0)
         self.speed = rospy.get_param("building_search_speed", 0.1)
 
@@ -89,6 +92,11 @@ class BuildingSearch(object):
         self.cluster_visual_pub = rospy.Publisher('/cluster_pointcloud', PointCloud2, queue_size=1)
     
     def publish_pointcloud(self, points):
+        """Publish the topic in 'PointCloud2' type to visualize in RViz
+
+        Args:
+            points: XYZ array of PointCloud()
+        """
         header = Header()
         header.stamp = rospy.Time.now()
         header.frame_id = 'local_origin'
@@ -118,7 +126,7 @@ class BuildingSearch(object):
         # Create a pcl.PointCloud object
         cloud = pcl.PointCloud()
         cloud.from_list(points_list)
-        if self.mission in [2,3]:
+        if self.mission in [Mission.BUILDING_SEARCH.value, Mission.MARKER_APPROACH.value]:
             ### Find the centroid of clustered object and Append to the 'building_centroid' list
             if cloud.size > 0:
                 tree = cloud.make_kdtree()
@@ -129,36 +137,29 @@ class BuildingSearch(object):
                 ec.set_SearchMethod(tree)
                 cluster_indices = ec.Extract()
 
-                for j, indices in enumerate(cluster_indices):
-                    cluster_points = [] #List to hold the cluster points
+                for _, indices in enumerate(cluster_indices):
+                    cluster_points = [] # List to hold the cluster points
 
                     for i in indices:
                         point = cloud[i]
                         cluster_points.append(point)
                         
-                    
                     # Create pcl.PointCloud objects for the cluster and colored cluster
                     cloud_cluster = pcl.PointCloud()
                     cloud_cluster.from_list(cluster_points)
                     self.publish_pointcloud(cloud_cluster.to_array())
                     
-
                     self.pointcloud_centroid = np.mean(cloud_cluster.to_array(), axis=0)
                     self.building_centroid.append(self.pointcloud_centroid)
-
-                    # Calculate the dimensionis of the bounding box
-                    min_pt = np.min(cloud_cluster.to_array(), axis=0)
-                    max_pt = np.max(cloud_cluster.to_array(), axis=0)
-
             else:
                 rospy.logwarn("Empty input cloud!")
 
-            ### Since there are too many noises...
-            if len(self.building_centroid) < self.building_search_count:
+            ### Since there are too many noises, Ignore centroids collected before the count 
+            if len(self.building_centroid) < self.BUILDING_SEARCH_COUNT:
                 
-                if self.flag == 0:
+                if self.initAngle is False:
                     _, _, self.current_angle = to_euler_angles(self.current_pose.pose.orientation.x, self.current_pose.pose.orientation.y, self.current_pose.pose.orientation.z, self.current_pose.pose.orientation.w)
-                    self.flag += 1
+                    self.initAngle = True
                 
                 ### Navigate in a circle from the WPT#3
                 self.target_pose.pose.position.x = self.current_pose.pose.position.x + 0.5 * (self.last_goal_x + self.radius * math.cos(self.current_angle) - self.current_pose.pose.position.x)
@@ -175,14 +176,14 @@ class BuildingSearch(object):
 
                 self.current_angle += self.speed
             
-            elif self.building_search_count<=len(self.building_centroid)<=self.building_search_count+self.building_stack_count:
+            elif self.BUILDING_SEARCH_COUNT <= len(self.building_centroid) <= self.BUILDING_SEARCH_COUNT + self.BUILDING_STACK_COUNT:
                 self.target_pose.pose.position.x = self.last_goal_x + self.radius * math.cos(self.current_angle)
                 self.target_pose.pose.position.y = self.last_goal_y + self.radius * math.sin(self.current_angle)
                 self.target_pose.pose.position.z = self.search_height
                 
                 error_yaw = math.atan2(self.pointcloud_centroid[1]-self.current_pose.pose.position.y, self.pointcloud_centroid[0]-self.current_pose.pose.position.x)
-                qz = math.sin(error_yaw/2.0)
-                qw = math.cos(error_yaw/2.0)
+                qz = math.sin(error_yaw / 2.0)
+                qw = math.cos(error_yaw / 2.0)
                 self.target_pose.pose.orientation.x = 0
                 self.target_pose.pose.orientation.y = 0
                 self.target_pose.pose.orientation.z = qz
@@ -212,27 +213,8 @@ class BuildingSearch(object):
                 self.centroid.pose.position.z = centroid[2]
                 self.centroid_pub.publish(self.centroid)
 
-                if len(self.building_centroid) == self.building_search_count+self.building_stack_count+10:
+                if len(self.building_centroid) == self.BUILDING_SEARCH_COUNT+self.BUILDING_STACK_COUNT+10:
                     auto_service.call_drone_command(3)
-            
-                
-    def draw_cube(self, pos):
-        #visualize
-        m = Marker()
-        m.type = Marker.CUBE
-        m.header.frame_id = 'local_origin'
-        m.header.stamp = rospy.Time.now()
-        m.action = Marker.ADD
-        m.scale.x = 0.2
-        m.scale.y = 0.2
-        m.scale.z = 0.2
-        m.color.a = 1.0
-        m.color.r = 230
-        m.color.g = 230
-        m.color.b = 250
-        m.pose.position = Point(pos[0], pos[1], pos[2])
-
-        return marker
 
 
 if __name__ == "__main__":
