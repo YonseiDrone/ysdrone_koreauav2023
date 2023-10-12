@@ -29,7 +29,7 @@ rosrun koreauav_utils flight_csv.py # Record a flight log
  ┣ 📂src
  ┃ ┣ 📜building_search.cpp
  ┃ ┗ 📜building_search_node.cpp
-[📦isly](./isly/)
+📦isly
  ┣ 📂scripts
  ┃ ┗ 📜isly_path_node.py
 📦offboard
