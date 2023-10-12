@@ -19,7 +19,8 @@ rosrun koreauav_utils flight_csv.py # Record a flight log
 ```
 
 ### Project Tree
-[📦building_search](./building_search/)
+```
+📦building_search
  ┣ 📂include
  ┃ ┗ 📂building_search
  ┃ ┃ ┗ 📜building_search.hpp
@@ -31,7 +32,7 @@ rosrun koreauav_utils flight_csv.py # Record a flight log
 [📦isly](./isly/)
  ┣ 📂scripts
  ┃ ┗ 📜isly_path_node.py
-[📦offboard](./offboard/)
+📦offboard
  ┣ 📂launch
  ┃ ┣ 📜avoidance.launch
  ┃ ┣ 📜avoidance_eth.launch
@@ -44,12 +45,12 @@ rosrun koreauav_utils flight_csv.py # Record a flight log
  ┃ ┗ 📜setmode_node.py
  ┣ 📂src
  ┃ ┗ 📜mission_controller.cpp
-[📦safety_landing](./safety_landing/)
+📦safety_landing
  ┣ 📂scripts
  ┃ ┣ 📜PID_control_node.py
  ┃ ┣ 📜RL_aruco_control_node.py
  ┃ ┗ 📜aruco_VIO.py
-[📦utils](./utils/)
+📦utils
  ┣ 📂config
  ┃ ┗ 📜gps_coordinates.yaml
  ┣ 📂launch
@@ -66,7 +67,7 @@ rosrun koreauav_utils flight_csv.py # Record a flight log
  ┃ ┃ ┣ 📜__init__.py
  ┃ ┃ ┗ 📜auto_service.py
  ┃ ┗ 📜yaml_to_gps.cpp
-[📦yolo_cross_detection](./yolo_cross_detection/)
+📦yolo_cross_detection
  ┣ 📂launch
  ┣ 📂scripts
  ┃ ┣ 📜image_recorder.py
@@ -76,9 +77,10 @@ rosrun koreauav_utils flight_csv.py # Record a flight log
  ┣ 📂weight
  ┃ ┣ 📜yolov5nV4.onnx
  ┃ ┗ 📜yolov5nV4.pt
-[📦ysdrone_msgs](./ysdrone_msgs/)
+📦ysdrone_msgs
  ┣ 📂srv
  ┃ ┗ 📜DroneCommand.srv
+```
 
 ### Documentation
 
