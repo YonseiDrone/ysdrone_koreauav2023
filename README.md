@@ -2,7 +2,7 @@
 **Author: Jusuk Lee, ChanJoon Park, Hokyun Im, Inha Baek**
 
 ### Hardware Setup
-| <img src="docs/s500.png" width="300" /> | <img src="docs/t810.jpg" width="300"/> |
+| <img src="docs/s500.png" width="500" /> | <img src="docs/t810.jpg" width="500"/> |
 |:--:|:--:|
 |**S500 Test Frame**|**T810 Main Frame**|
 - **Flight Controller**: Pixhawk FC 6X
