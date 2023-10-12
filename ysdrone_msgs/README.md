@@ -1,7 +1,12 @@
-# Package Name : ysdrone_msgs
+# ysdrone_msgs
 
-## Overview
-Generate msg and srv required for drone autonomous driving
+**DroneCommand.srv**
+```srv
+# Request
+int32 command
 
-## srv 
-### DroneCommand.srv
+---
+# Response
+bool res
+string mode
+```
