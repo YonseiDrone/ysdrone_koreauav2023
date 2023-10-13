@@ -14,7 +14,7 @@ from cv_bridge import CvBridge, CvBridgeError
 # import msgs...
 import message_filters
 from sensor_msgs.msg import Image, Imu
-from geometry_msgs.msg import PoseStamped, Point
+from geometry_msgs.msg import PoseStamped
 from visualization_msgs.msg import Marker
 from mavros_msgs.msg import State
 from std_msgs.msg import Float32, String
@@ -22,6 +22,7 @@ from std_msgs.msg import Float32, String
 # custom pkgs
 from ysdrone_msgs.srv import *
 from koreauav_utils import auto_service
+from yolo_utils import *
 
 class MarkerDetection(object):
     def __init__(self):
@@ -118,7 +119,7 @@ class MarkerDetection(object):
     def centroid_cb(self, msg): # store centroid, publish to gazebo
         x, y, z = msg.pose.position.x, msg.pose.position.y, msg.pose.position.z
         self.centroid = np.array([x,y,z])
-        marker = self.make_cube_marker(self.centroid, (0, 255, 0), 0.6)
+        marker = make_cube_marker(self.centroid, (0, 255, 0), 0.6)
         self.centroid_pub.publish(marker)
     
     def mission_cb(self, msg): # store mission number
@@ -146,72 +147,7 @@ class MarkerDetection(object):
     def pose_cb(self, msg): # store drone pose
         self.current_pose = msg
 
-    # ================================Debugging Functions==========================================
-    def log_matrices(self, cross_pos_3d, other_pos_3d, drone_pos_3d, setpoint, id=0): # log matrices for debugging
-        np.save(self.logd + f'/cross_pos_3d_{id}.npy', cross_pos_3d)
-        np.save(self.logd + f'/other_pos_3d_{id}.npy', other_pos_3d)
-        np.save(self.logd + f'/drone_pos_3d_{id}.npy', drone_pos_3d)
-        np.save(self.logd + f'/setpoint_{id}.npy', setpoint)
-
-    def make_cube_marker(self, pos, color, scale): # make cube marker for gazebo
-        marker = Marker()
-        marker.type = Marker.CUBE
-        marker.header.frame_id = 'local_origin'
-        marker.header.stamp = rospy.Time.now()
-        marker.action = Marker.ADD
-        marker.scale.x = scale
-        marker.scale.y = scale
-        marker.scale.z = scale
-        marker.color.a = 1.0
-        marker.color.r = color[0]
-        marker.color.g = color[1]
-        marker.color.b = color[2]
-        marker.pose.position = Point(pos[0], pos[1], pos[2])
-        return marker
-
-    def make_line_marker(self, pos, radius): # make line marker for visualize potential field bound
-        marker2 = Marker()
-        marker2.lifetime = rospy.Duration()
-        marker2.header.frame_id = "local_origin"
-        marker2.type = Marker.LINE_STRIP
-        marker2.action = Marker.ADD
-        marker2.color.a = 1.0
-        marker2.color.r = 1.0
-        marker2.color.g = 1.0
-        marker2.color.b = 1.0
-        marker2.scale.x = 0.1
-
-        points = []
-        samples = 50
-        for i in range(samples):
-            x = pos[0] + radius * math.cos(math.pi * 2.0 * float(i) / float(samples))
-            y = pos[1] + radius * math.sin(math.pi * 2.0 * float(i) / float(samples))
-            z = pos[2]
-            points.append(Point(x, y, z))
-        marker2.points = points
-        return marker2
-
-    # ================================Setpoint Calculation Functions==========================================
-    def to_euler_angles(self, x, y, z, w): # quarternion to euler angles
-        # roll(x-axis rotation)
-        sinr_cosp = 2 * (w * x + y * z)
-        cosr_cosp = 1 - 2 * (x * x + y * y)
-        angles_roll = math.atan2(sinr_cosp, cosr_cosp)
-
-        # pitch(y-axis rotation)
-        sinp = 2 * (w * y - z * x)
-        if abs(sinp) >= 1:
-            angles_pitch = math.copysign(math.pi / 2, sinp) # use 90 degrees if out of range
-        else:
-            angles_pitch = math.asin(sinp)
-        
-        # yaw(z-axis rotation)
-        siny_cosp = 2 * (w * z + x * y)
-        cosy_cosp = 1 - 2 * (y * y + z * z)
-        angles_yaw = math.atan2(siny_cosp, cosy_cosp)
-
-        return angles_roll, angles_pitch, angles_yaw
-
+    # ================================Setpoint Calculation Functions========================================================================
     def get_3d_coord_fast(self, pixels, depth_frame): # Pixel -> Camera -> FLU -> ENU -> Local
         pixels = np.array(pixels).astype(np.int32)
         distances = depth_frame[pixels[:, 1], pixels[:, 0]]
@@ -232,7 +168,7 @@ class MarkerDetection(object):
         flu_coords = np.dot(camera_to_flu, camera_coords)
         
         # FLU to ENU
-        roll, pitch, yaw = self.to_euler_angles(self.imu.orientation.x, self.imu.orientation.y, self.imu.orientation.z, self.imu.orientation.w)
+        roll, pitch, yaw = to_euler_angles(self.imu.orientation.x, self.imu.orientation.y, self.imu.orientation.z, self.imu.orientation.w)
         enu_yaw = np.array([[np.cos(yaw), -np.sin(yaw), 0], [np.sin(yaw), np.cos(yaw), 0], [0, 0, 1]])
         enu_roll = np.array([[1, 0, 0], [0, np.cos(roll), -np.sin(roll)], [0, np.sin(roll), np.cos(roll)]])
         enu_pitch = np.array([[np.cos(pitch), 0, np.sin(pitch)], [0, 1, 0], [-np.sin(pitch), 0, np.cos(pitch)]])
@@ -261,7 +197,7 @@ class MarkerDetection(object):
         enu_coord[2] = position[2] - self.current_pose.pose.position.z
 
         # ENU to FLU coordinate(east-north-up)
-        _, _, yaw = self.to_euler_angles(self.imu.orientation.x, self.imu.orientation.y, self.imu.orientation.z, self.imu.orientation.w)
+        _, _, yaw = to_euler_angles(self.imu.orientation.x, self.imu.orientation.y, self.imu.orientation.z, self.imu.orientation.w)
         yaw *= -1
         enu_rotation = np.array([[np.cos(yaw), -np.sin(yaw), 0], [np.sin(yaw), np.cos(yaw), 0], [0, 0, 1]])
         enu_translation = np.array([0, 0, 0])
@@ -293,18 +229,6 @@ class MarkerDetection(object):
 
         return [int(u), int(v)]
     
-    
-    def square_sampling(self, left_top, right_bottom, interval=2): # sample points from marker
-        result = []
-        x_start, y_start = left_top
-        x_end, y_end = right_bottom
-
-        for x in range(x_start, x_end, interval):
-            for y in range(y_start, y_end, interval):
-                result.append((x, y))
-
-        return result
-    
     def cal_approch_setpoint(self, cross_pos, other_pos, drone_pos, offset, depth_mean): # calculate setpoint
         points = np.array(other_pos) # to numpy array
 
@@ -330,39 +254,8 @@ class MarkerDetection(object):
 
             # drone setpoint = cross marker pos + offset * normal vector
             return cross_pos + normal_vector / np.linalg.norm(normal_vector) * offset * offset / (depth_mean if depth_mean < offset else offset)
+#=======================================================================================================================================================
 
-    # =======================Potential Field Functions=======================================================================================
-    def calc_attractive_force(self, x, y, gx, gy):
-        e_x, e_y = gx-x, gy-y
-        distance = np.linalg.norm([e_x, e_y])
-
-        self.Kp_att = distance * 0.1 # calculate attractive force
-        if self.Kp_att < 0.3: # threshold to not make force toward zero
-            self.Kp_att = 0.3
-
-        # calculate x, y components
-        att_x = self.Kp_att * e_x / distance
-        att_y = self.Kp_att * e_y / distance
-
-        return att_x, att_y
-
-    def calc_repulsive_force(self, x, y, obs):
-        rep_x, rep_y = 0.0, 0.0
-
-        for obs_xy in np.ndindex(obs.shape[0]):
-            obs_dis_x, obs_dis_y = obs[obs_xy][0] - x, obs[obs_xy][1] - y
-            obs_dis = np.linalg.norm([obs_dis_x, obs_dis_y])
-
-            if obs_dis < self.obstacle_bound:
-                rep_x = rep_x - self.Kp_rel * (1 / obs_dis - 1 / self.obstacle_bound) * (1 / (obs_dis * obs_dis)) * obs_dis_x / obs_dis
-                rep_y = rep_y - self.Kp_rel * (1 / obs_dis - 1 / self.obstacle_bound) * (1 / (obs_dis * obs_dis)) * obs_dis_y / obs_dis
-            else:
-                rep_x = rep_x
-                rep_y = rep_y
-            bound = self.make_line_marker(obs[obs_xy], self.obstacle_bound)
-            self.obstacle_bound_pub.publish(bound)
-        return rep_x, rep_y
-    # ===============================================================================================================================
 
     def image_cb(self, rgb_image, depth_image): # main callback
         bridge = CvBridge()
@@ -381,7 +274,6 @@ class MarkerDetection(object):
                     current_angle = error_yaw + math.pi
                     qz = math.sin(error_yaw/2.0)
                     qw = math.cos(error_yaw/2.0)
-
                     self.target_pose.pose.position.x = self.current_pose.pose.position.x + (self.centroid[0] + self.radius*math.cos(current_angle + self.circular_speed) - self.current_pose.pose.position.x)*0.4
                     self.target_pose.pose.position.y = self.current_pose.pose.position.y + (self.centroid[1] + self.radius*math.sin(current_angle + self.circular_speed) - self.current_pose.pose.position.y)*0.4
                     self.target_pose.pose.position.z = self.centroid[2]
@@ -408,18 +300,20 @@ class MarkerDetection(object):
                     if time.time() - self.last_detection_time > 3: # marker dissapeared, retry circular flight
                         self.crosspos_list = []
                         self.setpoint_list = []
-                        rospy.loginfo("================RESET====================")
 
                 else: # setpoint calculated, approach to setpoint
                     setpoint = np.mean(np.array(self.setpoint_list)[7: , :], axis=0)
-                    marker = self.make_cube_marker(setpoint, (0.0, 0.0, 1.0), 0.4)
+                    marker = make_cube_marker(setpoint, (0.0, 0.0, 1.0), 0.4)
                     self.approch_pub.publish(marker)
 
                     goal_x = setpoint[0]
                     goal_y = setpoint[1]
 
-                    att_x, att_y = self.calc_attractive_force(self.current_pose.pose.position.x, self.current_pose.pose.position.y, goal_x, goal_y)
-                    rep_x, rep_y = self.calc_repulsive_force(self.current_pose.pose.position.x, self.current_pose.pose.position.y, obstacle)
+                    att_x, att_y = calc_attractive_force(self.Kp_att, self.current_pose.pose.position.x, self.current_pose.pose.position.y, goal_x, goal_y)
+                    rep_x, rep_y = calc_repulsive_force(self.Kp_rel, self.current_pose.pose.position.x, self.current_pose.pose.position.y, obstacle, self.obstacle_bound)
+
+                    bound = make_line_marker(obstacle[0], self.obstacle_bound)
+                    self.obstacle_bound_pub.publish(bound)
 
                     pot_x = att_x + rep_x
                     pot_y = att_y + rep_y
@@ -436,7 +330,7 @@ class MarkerDetection(object):
                     self.target_pose.pose.position.z = setpoint[2]
 
                     cross_pos_3d = np.mean(np.array(self.crosspos_list), axis=0)
-                    marker = self.make_cube_marker(cross_pos_3d, (0.0, 0.0, 1.0), 0.4)
+                    marker = make_cube_marker(cross_pos_3d, (0.0, 0.0, 1.0), 0.4)
                     self.cross_marker_pub.publish(marker)
                     
                     # yaw 계산
@@ -485,7 +379,7 @@ class MarkerDetection(object):
                         rospy.loginfo("NaN Setpoint")
                     else:
                         self.setpoint_list.append(setpoint)
-                        self.log_matrices(cross_pos_3d, other_pos_3d, drone_pos_3d, setpoint, id=self.id)
+                        self.log_npys(logd=self.logd, cross_pos_3d=cross_pos_3d, other_pos_3d=other_pos_3d, drone_pos_3d=drone_pos_3d, setpoint=setpoint, id=self.id)
                         self.id += 1
 
                     # visualize setpoint information & counter check
