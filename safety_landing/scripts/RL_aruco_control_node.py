@@ -10,30 +10,7 @@ from math import pow, atan2, sqrt, pi, degrees
 from std_msgs.msg import Float32MultiArray, Float32
 import onnxruntime, rospkg, onnx
 import numpy as np
-from koreauav_utils import auto_service
-
-
-def to_quaternion(yaw, pitch, roll):
-    '''
-    Function to convert euler angle to quaternian angle.
-    Inputs:
-        yaw 
-        pitch
-        roll
-    '''
-    cy = math.cos(yaw * 0.5)
-    sy = math.sin(yaw * 0.5)
-    cp = math.cos(pitch * 0.5)
-    sp = math.sin(pitch * 0.5)
-    cr = math.cos(roll * 0.5)
-    sr = math.sin(roll * 0.5)
-
-    qx = sr*cp*cy - cr*sp*sy
-    qy = cr*sp*cy + sr*cp*sy
-    qz = cr*cp*sy - sr*sp*cy
-    qw = cr*cp*cy + sr*sp*sy
-
-    return qx, qy, qz, qw
+from koreauav_utils import auto_service, math_utils
 
 
 class RLControl:
@@ -113,7 +90,7 @@ class RLControl:
         '''
         1) The value coming from the aurco_VIO node is nan:
             Position control is performed.
-            It means that aruco marker is not recognized.
+            It means that aruco marker is not recognized.s
         2) The valuse is "not" nan:
             Velocity control is performed through RL control.
             It means that aruco marker is recognized.
@@ -121,7 +98,7 @@ class RLControl:
         if self.mission == 10:
             state = self.get_state()
             if np.isnan(self.relative_dis.data[0]):
-                qx, qy, qz, qw = to_quaternion(self.yaw, 0, 0)
+                qx, qy, qz, qw = math_utils.to_quaternion(self.yaw, 0, 0)
                 self.landing_velocity_position.pose.position.x = 0
                 self.landing_velocity_position.pose.position.y = 0
                 self.landing_velocity_position.pose.position.z = self.current_pose.pose.position.z - 0.4

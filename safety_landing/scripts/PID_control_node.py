@@ -9,29 +9,7 @@ from mavros_msgs.msg import State, PositionTarget
 from mavros_msgs.srv import CommandBool, SetMode, CommandTOL
 from math import pow, atan2, sqrt, pi, degrees
 from std_msgs.msg import Float32MultiArray, Float32
-from koreauav_utils import auto_service
-
-def to_quaternion(yaw, pitch, roll):
-    '''
-    Function to convert euler angle to quaternian angle.
-    Inputs:
-        yaw 
-        pitch
-        roll
-    '''
-    cy = math.cos(yaw * 0.5)
-    sy = math.sin(yaw * 0.5)
-    cp = math.cos(pitch * 0.5)
-    sp = math.sin(pitch * 0.5)
-    cr = math.cos(roll * 0.5)
-    sr = math.sin(roll * 0.5)
-
-    qx = sr*cp*cy - cr*sp*sy
-    qy = cr*sp*cy + sr*cp*sy
-    qz = cr*cp*sy - sr*sp*cy
-    qw = cr*cp*cy + sr*sp*sy
-
-    return qx, qy, qz, qw
+from koreauav_utils import auto_service, math_utils
 
 class PID:
     '''
@@ -136,7 +114,7 @@ class PIDControl:
         '''
         if self.mission == 6:
             if np.isnan(self.relative_dis.data[0]):
-                qx, qy, qz, qw = to_quaternion(self.yaw, 0, 0)
+                qx, qy, qz, qw = math_utils.to_quaternion(self.yaw, 0, 0)
                 self.desired_landing_position.pose.position.x = 0
                 self.desired_landing_position.pose.position.y = 0
                 self.desired_landing_position.pose.position.z = self.current_pose.pose.position.z - 0.1
