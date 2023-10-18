@@ -31,11 +31,8 @@ class IslyPath(object):
         self.pose_sub = rospy.Subscriber('/mavros/local_position/pose', PoseStamped, self.pose_cb)
         self.mission_sub = rospy.Subscriber('/mission', Float32, self.mission_cb)
 
-        if rospy.has_param('/destination_z'):
-            self.destination_z = rospy.get_param('/destination_z')
-        else:
-            self.destination_z = 3.0
-            rospy.set_param('/destination_z', self.destination_z)
+        self.destination_z = rospy.get_param('/destination_z', 3.0) #Set default value to 3.0m
+
         rospy.logwarn(f"Check Z value! {rospy.get_param('/destination_z')}")
         rospy.logwarn(f"Check Z value! {rospy.get_param('/destination_z')}")
 
@@ -92,18 +89,12 @@ class IslyPath(object):
         if self.init_destination_check and self.mission == 5:
             self.isly_destination.header.stamp = rospy.get_rostime()
             self.destination_cnt_msg.data = self.destination_cnt
-
-            #=====================================LOCAL COORDINATE=======================================================
             self.destination_positions = [
                 (self.destination_3_pose.point.x, self.destination_3_pose.point.y, self.destination_z),
                 (self.destination_2_pose.point.x, self.destination_2_pose.point.y, self.destination_z),
                 (self.destination_1_pose.point.x, self.destination_1_pose.point.y, self.destination_z)
             ]
-            #rospy.loginfo(f"Waypoint 1 - x: {self.destination_1_pose.point.x}, y: {self.destination_1_pose.point.y}, z: {self.destination_z}")
-            #rospy.loginfo(f"Waypoint 2 - x: {self.destination_2_pose.point.x}, y: {self.destination_2_pose.point.y}, z: {self.destination_z}")
-            #rospy.loginfo(f"Waypoint 3 - x: {self.destination_3_pose.point.x}, y: {self.destination_3_pose.point.y}, z: {self.destination_z}")
-            #==============================================================================================================
-
+    
             if self.destination_cnt < len(self.destination_positions):
                 self.isly_destination.pose.position.x, self.isly_destination.pose.position.y, self.isly_destination.pose.position.z = self.destination_positions[self.destination_cnt]
                 self.isly_destination_pub.publish(self.isly_destination)
@@ -114,10 +105,7 @@ class IslyPath(object):
 
             if self.calc_xy_err(self.isly_destination, self.current_pose) < 0.3 and self.calc_z_err(self.isly_destination, self.current_pose) < 0.2:
                 self.destination_cnt += 1
-                # 여기 나중에 수정 필요
-                # if self.destination_cnt > 4:
-                #     self.destination_cnt = 0
-            
+
             self.isly_destination_pub.publish(self.isly_destination)
 
 
